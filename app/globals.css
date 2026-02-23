@@ -99,3 +99,50 @@ body {
 .gauge-paused .gauge-keyword-slide {
   animation-play-state: paused;
 }
+
+/* 감응 성장 멘트 — 단어가 파동 곡선을 그리며 움직이는 애니메이션 */
+@keyframes growth-word-wave {
+  0%, 100% { transform: translateY(0); }
+  25% { transform: translateY(-4px); }
+  50% { transform: translateY(0); }
+  75% { transform: translateY(4px); }
+}
+.growth-word-wave {
+  display: inline-block;
+  animation: growth-word-wave 2.5s ease-in-out infinite;
+}
+
+/* 자깨초시 타이틀 — 1초 간격으로 한 글자씩 자각하듯 등장, 10초 주기 반복 */
+@keyframes title-letter-awake {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  4% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  7% {
+    transform: scale(1);
+  }
+  93% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+}
+.title-letter-awake {
+  display: inline-block;
+  animation: title-letter-awake 10s ease-out infinite;
+  animation-fill-mode: backwards; /* 지연 동안 0% 상태(숨김) 유지 */
+}
+@-webkit-keyframes title-letter-awake {
+  0% { opacity: 0; -webkit-transform: scale(0.82); }
+  4% { opacity: 1; -webkit-transform: scale(1.12); }
+  7% { -webkit-transform: scale(1); }
+  93% { opacity: 1; -webkit-transform: scale(1); }
+  100% { opacity: 0; -webkit-transform: scale(0.82); }
+}

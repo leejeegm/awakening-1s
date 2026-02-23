@@ -261,8 +261,11 @@ export default function Home() {
     <main className="min-h-screen pb-24">
       {/* Landing: 철학 */}
       <section className="pt-8 px-4 text-center">
-        <h1 className="text-2xl font-bold bg-gradient-resonans bg-clip-text text-transparent">
-          자깨초시
+        <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-resonans bg-clip-text text-transparent tracking-tight">
+          <span className="title-letter-awake" style={{ animationDelay: "0s" }}>자</span>
+          <span className="title-letter-awake" style={{ animationDelay: "1s" }}>깨</span>
+          <span className="title-letter-awake" style={{ animationDelay: "2s" }}>초</span>
+          <span className="title-letter-awake" style={{ animationDelay: "3s" }}>시</span>
         </h1>
         <p className="mt-2 text-slate-400 text-sm max-w-lg mx-auto leading-relaxed">
           1.00초 자각 — 뇌가 자신 내면상태와 외부 자극에 의한 무의식/의식 영향으로 인지, 정서, 행동으로 나타나는 찰나의 순간을 포착합니다.

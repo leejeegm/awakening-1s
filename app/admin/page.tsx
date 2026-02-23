@@ -29,6 +29,7 @@ export default function AdminPage() {
   const [editNote, setEditNote] = useState("");
   const [editingNickname, setEditingNickname] = useState<string | null>(null);
   const [editHint, setEditHint] = useState("");
+  const [backupLoading, setBackupLoading] = useState(false);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -137,6 +138,30 @@ export default function AdminPage() {
     setEditNote("");
   };
 
+  const handleBackupDownload = async () => {
+    setBackupLoading(true);
+    try {
+      const res = await fetch("/api/admin/backup");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error ?? "백업 조회 실패");
+        return;
+      }
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `awakening-backup-${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("백업 다운로드 중 오류가 났습니다.");
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
   const handleSaveHint = async () => {
     if (!editingNickname) return;
     const res = await fetch(`/api/admin/members/${encodeURIComponent(editingNickname)}`, {
@@ -225,9 +250,21 @@ export default function AdminPage() {
           </button>
         </div>
         {tab === "records" && (
-          <p className="text-xs text-slate-500 mb-4">
-            사회적·공공선상 미풍양속, 정치·종교·사상·욕설·비방·협박 등 문제가 있는 경우에만 삭제 또는 수정하세요. 모든 조치는 admin_actions 테이블에 기록됩니다.
-          </p>
+          <>
+            <p className="text-xs text-slate-500 mb-2">
+              사회적·공공선상 미풍양속, 정치·종교·사상·욕설·비방·협박 등 문제가 있는 경우에만 삭제 또는 수정하세요. 모든 조치는 admin_actions 테이블에 기록됩니다.
+            </p>
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={handleBackupDownload}
+                disabled={backupLoading}
+                className="px-3 py-2 rounded-lg bg-slate-700 text-slate-200 text-sm hover:bg-slate-600 disabled:opacity-50"
+              >
+                {backupLoading ? "백업 준비 중..." : "백업 다운로드 (원자료 + 반응 + 키워드 요약)"}
+              </button>
+            </div>
+          </>
         )}
         {tab === "members" && (
           <p className="text-xs text-slate-500 mb-4">
