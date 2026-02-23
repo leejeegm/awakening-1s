@@ -1,0 +1,24 @@
+{
+  "name": "자깨초시 Self-Awakening 1.00s",
+  "short_name": "자깨초시",
+  "description": "1.00초 자각과 감응하는 인간을 위한 Life OS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#4C1D95",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --deep-violet: #4C1D95;
+  --electric-blue: #2563EB;
+  --gradient-resonans: linear-gradient(135deg, #4C1D95 0%, #2563EB 100%);
+}
+
+body {
+  @apply antialiased bg-slate-950 text-slate-100 min-h-screen;
+}
+
+/* 감응 파동 애니메이션 */
+@keyframes resonans-wave {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.7;
+    border-width: 2px;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+.ring-wave {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid rgba(37, 99, 235, 0.6);
+  animation: resonans-wave 1s ease-out forwards;
+  pointer-events: none;
+}
+
+/* 1.00s° 타이머 강조 */
+.timer-display {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+}
+
+/* 공명 게이지 — 중심선 기준 중첩 파동선 흐름 */
+@keyframes gauge-wave-flow {
+  0% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -120; }
+}
+.gauge-wave-flow {
+  stroke-dasharray: 60 60;
+  animation: gauge-wave-flow 2.5s linear infinite;
+}
+.gauge-wave-mid {
+  animation-duration: 2s;
+}
+.gauge-wave-small {
+  animation-duration: 1.5s;
+}
+.gauge-paused .gauge-wave-flow {
+  animation-play-state: paused;
+}
+
+/* 감응 클릭 피드백: 보라색 2회 깜빡임 후 사라짐 */
+@keyframes reaction-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.reaction-feedback-float {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+}
+.animate-reaction-blink {
+  animation: reaction-blink 0.4s ease-in-out 2 forwards;
+}
+
+/* 공명 게이지 — 키워드가 파동선을 타고 흐르는 듯한 애니메이션 */
+@keyframes keyword-flow {
+  0% { transform: translateX(0) translateY(0); }
+  25% { transform: translateX(4%) translateY(-3px); }
+  50% { transform: translateX(8%) translateY(0); }
+  75% { transform: translateX(4%) translateY(3px); }
+  100% { transform: translateX(0) translateY(0); }
+}
+@keyframes keyword-slide {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.gauge-keyword-flow {
+  animation: keyword-flow 4s ease-in-out infinite;
+}
+.gauge-keyword-slide {
+  animation: keyword-slide 25s linear infinite;
+}
+.gauge-paused .gauge-keyword-flow,
+.gauge-paused .gauge-keyword-slide {
+  animation-play-state: paused;
+}
