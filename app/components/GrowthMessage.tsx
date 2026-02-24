@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useMemo } from "react";
-import { Volume2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useMemo, useState } from "react";
+import { Volume2, VolumeX, Square, Sparkles } from "lucide-react";
 import {
   PLAN_LABELS,
   PLAN_DAILY_LIMIT,
@@ -13,45 +13,106 @@ import {
 const GROWTH_TEXT = "감응 시도가 누적될수록 감응하는 인간으로 성장중입니다.";
 
 const WORD_COLORS = [
-  "#2563EB", /* electric-blue */
-  "#4C1D95", /* deep-violet */
-  "#059669", /* emerald */
-  "#D97706", /* amber */
-  "#DB2777", /* pink */
-  "#0891B2", /* cyan */
-  "#7C3AED", /* violet */
-  "#EA580C", /* orange */
+  "#2563EB",
+  "#4C1D95",
+  "#059669",
+  "#D97706",
+  "#DB2777",
+  "#0891B2",
+  "#7C3AED",
+  "#EA580C",
 ];
 
 function splitWords(text: string): string[] {
   return text.split(/\s+/).filter(Boolean);
 }
 
+const DURATION_OPTIONS = [
+  { value: "1s", label: "1초 찰나" },
+  { value: "10s", label: "10초 찰나" },
+  { value: "100s", label: "100초 찰나" },
+] as const;
+
 type Props = {
   planType: PlanType;
   usedToday?: number;
   usedPeriod?: number;
+  lastRecordNickname?: string;
 };
 
-export default function GrowthMessage({ planType, usedToday = 0, usedPeriod }: Props) {
+export default function GrowthMessage({
+  planType,
+  usedToday = 0,
+  usedPeriod,
+  lastRecordNickname = "",
+}: Props) {
   const prevUsedTodayRef = useRef<number | undefined>(undefined);
+  const [volume, setVolume] = useState(0.8);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [warmOpen, setWarmOpen] = useState(false);
+  const [warmDuration, setWarmDuration] = useState<"1s" | "10s" | "100s">("1s");
+  const [warmMessage, setWarmMessage] = useState<string | null>(null);
+  const [warmLoading, setWarmLoading] = useState(false);
+  const [warmError, setWarmError] = useState<string | null>(null);
 
-  const speak = useCallback(() => {
+  const speak = useCallback(
+    (text: string) => {
+      if (typeof window === "undefined" || !window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "ko-KR";
+      u.rate = 0.9;
+      u.volume = Math.max(0, Math.min(1, volume));
+      u.onstart = () => setIsSpeaking(true);
+      u.onend = u.onerror = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(u);
+    },
+    [volume]
+  );
+
+  const speakGrowth = useCallback(() => {
+    speak(GROWTH_TEXT);
+  }, [speak]);
+
+  const stopSpeak = useCallback(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(GROWTH_TEXT);
-    u.lang = "ko-KR";
-    u.rate = 0.9;
-    window.speechSynthesis.speak(u);
+    setIsSpeaking(false);
   }, []);
 
-  /* '오늘 N/10회' 횟수가 늘 때마다 음성 자동 재생 */
   useEffect(() => {
     if (prevUsedTodayRef.current !== undefined && usedToday > prevUsedTodayRef.current) {
-      speak();
+      speakGrowth();
     }
     prevUsedTodayRef.current = usedToday;
-  }, [usedToday, speak]);
+  }, [usedToday, speakGrowth]);
+
+  const fetchWarmMessage = useCallback(async () => {
+    const nick = (lastRecordNickname || "").trim() || (typeof window !== "undefined" ? localStorage.getItem("lastRecordNickname") ?? "" : "").trim();
+    if (!nick) {
+      setWarmError("닉네임이 없습니다. 먼저 자각 기록을 남겨 주세요.");
+      setWarmMessage(null);
+      return;
+    }
+    setWarmLoading(true);
+    setWarmError(null);
+    setWarmMessage(null);
+    try {
+      const res = await fetch(
+        `/api/ai/warm-message?nickname=${encodeURIComponent(nick)}&durationType=${warmDuration}`
+      );
+      const data = (await res.json()) as { message?: string; error?: string };
+      if (!res.ok) {
+        setWarmError(data.error ?? "요청 실패");
+        return;
+      }
+      setWarmMessage(data.message ?? null);
+    } catch {
+      setWarmError("네트워크 오류");
+    } finally {
+      setWarmLoading(false);
+    }
+  }, [lastRecordNickname, warmDuration]);
 
   const wordsWithColors = useMemo(() => {
     const words = splitWords(GROWTH_TEXT);
@@ -69,6 +130,7 @@ export default function GrowthMessage({ planType, usedToday = 0, usedPeriod }: P
 
   return (
     <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-4 space-y-3">
+      <p className="text-xs text-slate-500 mb-1">감응 성장 문구 · 아래에서 음성/중지/소리/감응 사용</p>
       <p className="text-sm flex items-center gap-x-1.5 gap-y-1 flex-wrap">
         {wordsWithColors.map(({ word, color }, i) => (
           <span
@@ -83,16 +145,107 @@ export default function GrowthMessage({ planType, usedToday = 0, usedPeriod }: P
             {word}
           </span>
         ))}
+        {/* 음성 재생 / 중지 */}
+        <span className="shrink-0 inline-flex items-center gap-1">
+          <button
+            type="button"
+            onClick={speakGrowth}
+            disabled={isSpeaking}
+            className="p-1.5 rounded-lg bg-slate-700/80 hover:bg-electric-blue/30 text-slate-400 hover:text-electric-blue transition disabled:opacity-50"
+            title="음성으로 듣기"
+            aria-label="감응 동기부여 음성 재생"
+          >
+            <Volume2 className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={stopSpeak}
+            className="p-1.5 rounded-lg bg-slate-700/80 hover:bg-red-500/30 text-slate-400 hover:text-red-400 transition"
+            title="음성 중지"
+            aria-label="음성 중지"
+          >
+            <Square className="w-4 h-4" />
+          </button>
+          {/* 소리 크기 */}
+          <span className="flex items-center gap-1 ml-1">
+            <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={volume}
+              onChange={(e) => setVolume(Number(e.target.value))}
+              className="w-16 h-1.5 accent-blue-500 bg-slate-600 rounded"
+              aria-label="음량"
+            />
+          </span>
+        </span>
+        {/* 감응 버튼 */}
         <button
           type="button"
-          onClick={speak}
-          className="shrink-0 p-1.5 rounded-lg bg-slate-700/80 hover:bg-electric-blue/30 text-slate-400 hover:text-electric-blue transition"
-          title="음성으로 듣기"
-          aria-label="감응 동기부여 음성 재생"
+          onClick={() => setWarmOpen((o) => !o)}
+          className="shrink-0 p-1.5 rounded-lg bg-deep-violet/50 hover:bg-deep-violet/80 text-slate-300 hover:text-white transition inline-flex items-center gap-1"
+          title="AI 감응 분석 따뜻한 한마디"
+          aria-label="감응 분석"
         >
-          <Volume2 className="w-4 h-4" />
+          <Sparkles className="w-4 h-4" />
+          <span className="text-xs font-medium">감응</span>
         </button>
       </p>
+
+      {/* 감응 모달: 1/10/100초 선택 → 카드 보기 / 말하기 */}
+      {warmOpen && (
+        <div className="mt-3 p-3 rounded-lg bg-slate-900/80 border border-slate-600 space-y-3">
+          <p className="text-xs text-slate-400">오늘 작성한 찰나 3개 기준 AI 따뜻한 한마디</p>
+          <div className="flex flex-wrap gap-2">
+            {DURATION_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  setWarmDuration(opt.value);
+                  setWarmMessage(null);
+                  setWarmError(null);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                  warmDuration === opt.value
+                    ? "bg-electric-blue/30 text-electric-blue border border-electric-blue/50"
+                    : "bg-slate-700/50 text-slate-400 border border-slate-600 hover:bg-slate-700"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={fetchWarmMessage}
+              disabled={warmLoading}
+              className="px-3 py-1.5 rounded-lg bg-deep-violet/70 hover:bg-deep-violet text-white text-sm font-medium disabled:opacity-50"
+            >
+              {warmLoading ? "분석 중…" : "따뜻한 한마디 보기"}
+            </button>
+            {warmMessage && (
+              <button
+                type="button"
+                onClick={() => speak(warmMessage)}
+                className="px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-slate-200 text-sm font-medium inline-flex items-center gap-1"
+              >
+                <Volume2 className="w-3.5 h-3.5" /> 말하기
+              </button>
+            )}
+          </div>
+          {warmError && <p className="text-xs text-red-400">{warmError}</p>}
+          {warmMessage && (
+            <div className="p-3 rounded-lg bg-slate-800/80 border border-slate-600 text-sm text-slate-200 leading-relaxed">
+              {warmMessage}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
         <span>
           {label}

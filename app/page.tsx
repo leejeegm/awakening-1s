@@ -286,7 +286,11 @@ export default function Home() {
           1.00초 자각 — 뇌가 자신 내면상태와 외부 자극에 의한 무의식/의식 영향으로 인지, 정서, 행동으로 나타나는 찰나의 순간을 포착합니다.
           <br />
           <span className="mt-1 block">
-            감응(Resonans)하는 인간, 좌우 뇌를 잇는 뇌량적 정보 통합에 의한 자신을 깨우는 1.00초°분°시°의 시도된 의식의 리듬을 시각화합니다.
+            감응(Resonans)하는 인간, 좌우 뇌를 잇는 뇌량적 정보 통합에 의한{" "}
+            <span className="text-base font-medium text-slate-300 italic underline underline-offset-2">
+              자신을 깨우는 1.00초°분°시°의 시도
+            </span>
+            된 의식 리듬을 시각화합니다.
           </span>
         </p>
       </section>
@@ -344,13 +348,25 @@ export default function Home() {
         errorMessage={submitError}
       />
 
-      {/* 감응 성장 문구 + 플랜/한도 + TTS */}
-      <section className="px-4 mt-6">
+      {/* 감응 성장 문구 + 음성/중지/소리/감응 버튼 + 플랜 한도 */}
+      <section className="px-4 mt-6" aria-label="감응 성장">
+        <h2 className="text-sm font-medium text-slate-400 mb-2">감응 성장</h2>
         <GrowthMessage
           planType={planInfo.planType}
           usedToday={planInfo.usedToday}
           usedPeriod={planInfo.usedPeriod}
+          lastRecordNickname={lastRecordNickname}
         />
+      </section>
+
+      {/* AI 맞춤 감응카드 — 공명 게이지 바로 위 */}
+      <section className="px-4 mt-6" aria-label="맞춤 감응카드">
+        <h2 className="text-sm font-medium text-slate-400 mb-2">맞춤 감응카드</h2>
+        <SectionErrorBoundary fallbackTitle="AI 인사이트를 불러오는 중 문제가 생겼습니다." onRetry={() => setSectionKeys((prev) => ({ ...prev, insight: prev.insight + 1 }))}>
+          <div key={sectionKeys.insight}>
+            <InsightCard lastRecordNickname={lastRecordNickname} />
+          </div>
+        </SectionErrorBoundary>
       </section>
 
       {/* Resonans Gauge */}
@@ -367,15 +383,6 @@ export default function Home() {
         <SectionErrorBoundary fallbackTitle="포인트를 불러오는 중 문제가 생겼습니다." onRetry={() => setSectionKeys((prev) => ({ ...prev, points: prev.points + 1 }))}>
           <div key={sectionKeys.points}>
             <ResonancePoints myRecordCount={myRecordCount} totalRecords={totalRecords} />
-          </div>
-        </SectionErrorBoundary>
-      </section>
-
-      {/* AI 감응 트렌드 / 맞춤 카드 뉴스 */}
-      <section className="px-4 mt-6">
-        <SectionErrorBoundary fallbackTitle="AI 인사이트를 불러오는 중 문제가 생겼습니다." onRetry={() => setSectionKeys((prev) => ({ ...prev, insight: prev.insight + 1 }))}>
-          <div key={sectionKeys.insight}>
-            <InsightCard lastRecordNickname={lastRecordNickname} />
           </div>
         </SectionErrorBoundary>
       </section>
