@@ -316,9 +316,9 @@ export default function Home() {
           <img
             src="/jakkaechosi_logo.png"
             alt="자깨초시"
-            width={280}
-            height={70}
-            className="max-w-[min(100%,18rem)] h-auto object-contain block select-none"
+            width={140}
+            height={35}
+            className="max-w-[min(100%,9rem)] h-auto object-contain block select-none"
             style={{ pointerEvents: "auto" }}
             fetchPriority="high"
             draggable={false}
