@@ -59,12 +59,12 @@ export const PLAN_PRICE: Partial<Record<PlanType, string>> = {
 };
 
 /** 클라이언트에서 사용할 수 있도록 Supabase 클라이언트 타입만 의존 */
-type CountFetcher = (nickname: string, sinceIso: string) => Promise<number>;
+type CountFetcher = (nickname: string, sinceIso: string) => PromiseLike<number>;
 
 export async function checkRecordLimit(
   nickname: string,
   fetchCount: CountFetcher,
-  fetchPlan: (nickname: string) => Promise<{ plan_type: string; valid_until: string } | null>
+  fetchPlan: (nickname: string) => PromiseLike<{ plan_type: string; valid_until: string } | null>
 ): Promise<{ allowed: boolean; message?: string; planType: PlanType; usedToday: number; usedPeriod?: number }> {
   const n = nickname.trim();
   if (!n) return { allowed: true, planType: "free", usedToday: 0 };

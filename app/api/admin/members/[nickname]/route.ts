@@ -28,7 +28,7 @@ export async function PATCH(
       : String(body.password_hint ?? "").trim().slice(0, 100);
   const { error } = await admin
     .from("participant_keys")
-    .update({ password_hint: hint })
+    .update({ password_hint: hint } as never)
     .eq("nickname", decoded);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

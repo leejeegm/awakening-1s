@@ -38,21 +38,23 @@ export default function ResonansGauge({ myAttempts, lastRecordNickname = "" }: P
   const [showRandomNote, setShowRandomNote] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
     const fetchCount = async () => {
       try {
-        const { count, error } = await withTimeout(
-          supabase.from("awakenings").select("*", { count: "exact", head: true })
-        );
-        if (!error) setTotal(count ?? 0);
+        const res = await withTimeout(
+          Promise.resolve(client.from("awakenings").select("*", { count: "exact", head: true }))
+        ) as { count: number | null; error: unknown };
+        if (!res.error) setTotal(res.count ?? 0);
       } catch {}
     };
     fetchCount();
   }, []);
 
   useEffect(() => {
-    if (!supabase) return;
-    const channel = supabase
+    const client = supabase;
+    if (!client) return;
+    const channel = client
       .channel("gauge")
       .on(
         "postgres_changes",
@@ -61,15 +63,19 @@ export default function ResonansGauge({ myAttempts, lastRecordNickname = "" }: P
       )
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      client.removeChannel(channel);
     };
   }, []);
 
   const fetchNotes = useCallback(async () => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
     try {
-      const { data } = await withTimeout(supabase.from("awakenings").select("note").limit(80));
-      const notes = (data ?? []).map((r) => (r as { note: string }).note);
+      const res = await withTimeout(
+        Promise.resolve(client.from("awakenings").select("note").limit(80))
+      ) as { data: { note: string }[] | null };
+      const data = res.data;
+      const notes = (data ?? []).map((r) => r.note);
       setTopWords(topKeywords(notes, 15));
     } catch {}
   }, []);
@@ -79,8 +85,9 @@ export default function ResonansGauge({ myAttempts, lastRecordNickname = "" }: P
   }, [fetchNotes]);
 
   useEffect(() => {
-    if (!supabase) return;
-    const channel = supabase
+    const client = supabase;
+    if (!client) return;
+    const channel = client
       .channel("gauge-notes")
       .on(
         "postgres_changes",
@@ -88,20 +95,23 @@ export default function ResonansGauge({ myAttempts, lastRecordNickname = "" }: P
         () => { fetchNotes(); }
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { client.removeChannel(channel); };
   }, [fetchNotes]);
 
   useEffect(() => {
-    if (!supabase || !lastRecordNickname.trim()) {
+    const client = supabase;
+    if (!client || !lastRecordNickname.trim()) {
       setMyRecordNotes([]);
       return;
     }
     const fetchMyNotes = async () => {
       try {
-        const { data } = await withTimeout(
-          supabase.from("awakenings").select("note").eq("nickname", lastRecordNickname.trim())
-        );
-        setMyRecordNotes((data ?? []).map((r) => (r as { note: string }).note));
+        const res = await withTimeout(
+          Promise.resolve(
+            client.from("awakenings").select("note").eq("nickname", lastRecordNickname.trim())
+          )
+        ) as { data: { note: string }[] | null };
+        setMyRecordNotes((res.data ?? []).map((r) => r.note));
       } catch {
         setMyRecordNotes([]);
       }
@@ -228,7 +238,7 @@ export default function ResonansGauge({ myAttempts, lastRecordNickname = "" }: P
           {showRandomNote && (
             <div className="absolute inset-0 z-10 flex items-center justify-center p-3 bg-slate-900/95 rounded-xl">
               <p className="text-sm text-slate-200 text-center max-w-full line-clamp-3">
-                "{showRandomNote}"
+                &quot;{showRandomNote}&quot;
               </p>
             </div>
           )}

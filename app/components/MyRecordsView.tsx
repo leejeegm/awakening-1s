@@ -63,7 +63,7 @@ export default function MyRecordsView() {
           nickname: n,
           password_hash: hash,
           password_hint: hint.trim() || null,
-        });
+        } as never);
       } else if (keyRow.password_hash !== hash) {
         setMessage(
           keyRow.password_hint

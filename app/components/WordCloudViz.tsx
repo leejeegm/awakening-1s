@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { withTimeout } from "@/lib/requestTimeout";
 import { X } from "lucide-react";
@@ -69,16 +69,18 @@ function WordCloudPanel({
   emptyMessage: string;
   onKeywordClick?: (keyword: string) => void;
 }) {
+  type WordItem = { text: string; value: number; index: number; type: "word" };
+  type DecoItem = { text: string; value: number; index: number; type: "deco" };
   const { totalSum, items } = useMemo(() => {
     const total = words.reduce((s, w) => s + w.value, 0);
-    const withDeco = words.map((w, i) => ({ ...w, index: i, type: "word" as const }));
+    const withDeco: (WordItem | DecoItem)[] = words.map((w, i) => ({ ...w, index: i, type: "word" as const }));
     const decoCount = Math.min(2, Math.max(0, Math.floor(words.length / 6)));
     for (let i = 0; i < decoCount; i++) {
       withDeco.push({
         text: i % 2 === 0 ? "감" : "응",
         value: total > 0 ? Math.max(1, Math.floor(total * 0.05)) : 1,
         index: words.length + i,
-        type: "deco" as const,
+        type: "deco",
       });
     }
     return { totalSum: total, items: withDeco };
@@ -157,33 +159,38 @@ export default function WordCloudViz({ lastRecordNickname = "" }: Props) {
     }
   }, [lastRecordNickname]);
 
-  const fetchAll = async () => {
-    if (!supabase) return;
+  const fetchAll = useCallback(async () => {
+    const client = supabase;
+    if (!client) return;
     try {
-      const { data } = await withTimeout(supabase.from("awakenings").select("note").limit(80));
-      setAllNotes((data ?? []).map((r) => (r as { note: string }).note));
+      const res = await withTimeout(
+        Promise.resolve(client.from("awakenings").select("note").limit(80))
+      ) as { data: { note: string }[] | null };
+      setAllNotes((res.data ?? []).map((r) => r.note));
     } catch {
       setAllNotes([]);
     }
-  };
+  }, []);
 
-  const fetchMy = async () => {
-    if (!supabase || !effectiveNickname) {
+  const fetchMy = useCallback(async () => {
+    const client = supabase;
+    if (!client || !effectiveNickname) {
       setMyNotes([]);
       return;
     }
     try {
-      const { data } = await withTimeout(
-        supabase.from("awakenings").select("note").eq("nickname", effectiveNickname)
-      );
-      setMyNotes((data ?? []).map((r) => (r as { note: string }).note));
+      const res = await withTimeout(
+        Promise.resolve(client.from("awakenings").select("note").eq("nickname", effectiveNickname))
+      ) as { data: { note: string }[] | null };
+      setMyNotes((res.data ?? []).map((r) => r.note));
     } catch {
       setMyNotes([]);
     }
-  };
+  }, [effectiveNickname]);
 
   useEffect(() => {
-    if (!supabase) {
+    const client = supabase;
+    if (!client) {
       setLoading(false);
       return;
     }
@@ -193,11 +200,12 @@ export default function WordCloudViz({ lastRecordNickname = "" }: Props) {
       setLoading(false);
     };
     load();
-  }, [effectiveNickname]);
+  }, [effectiveNickname, fetchAll, fetchMy]);
 
   useEffect(() => {
-    if (!supabase) return;
-    const channel = supabase
+    const client = supabase;
+    if (!client) return;
+    const channel = client
       .channel("wordcloud")
       .on(
         "postgres_changes",
@@ -215,25 +223,28 @@ export default function WordCloudViz({ lastRecordNickname = "" }: Props) {
       )
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      client.removeChannel(channel);
     };
   }, [effectiveNickname]);
 
   const fetchRecordsByKeyword = useCallback(async (keyword: string) => {
     setKeywordModal({ keyword, records: [], loading: true });
-    if (!supabase || !keyword.trim()) {
+    const client = supabase;
+    if (!client || !keyword.trim()) {
       setKeywordModal((m) => (m ? { ...m, loading: false } : null));
       return;
     }
     try {
-      const { data } = await withTimeout(
-        supabase
-          .from("awakenings")
-          .select("note, created_at")
-          .ilike("note", `%${keyword.trim()}%`)
-          .limit(30)
-      );
-      const rows = (data ?? []) as RecordRow[];
+      const res = await withTimeout(
+        Promise.resolve(
+          client
+            .from("awakenings")
+            .select("note, created_at")
+            .ilike("note", `%${keyword.trim()}%`)
+            .limit(30)
+        )
+      ) as { data: RecordRow[] | null };
+      const rows = res.data ?? [];
       const shuffled = [...rows].sort(() => Math.random() - 0.5);
       const picked = shuffled.slice(0, 5);
       setKeywordModal({ keyword, records: picked, loading: false });

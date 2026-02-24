@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { withTimeout } from "@/lib/requestTimeout";
 import type { Database } from "@/types/supabase";
@@ -23,20 +23,24 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
   const [viewMode, setViewMode] = useState<"list" | "top10">("list");
 
   const fetchList = async () => {
-    if (!supabase) {
+    const client = supabase;
+    if (!client) {
       setLoading(false);
       return;
     }
     setLoadErrorState(false);
     setLoading(true);
     try {
-      const { data, error } = await withTimeout(
-        supabase
-          .from("awakenings")
-          .select("id, created_at, nickname, note")
-          .order("created_at", { ascending: false })
-          .limit(60)
-      );
+      const res = await withTimeout(
+        Promise.resolve(
+          client
+            .from("awakenings")
+            .select("id, created_at, nickname, note")
+            .order("created_at", { ascending: false })
+            .limit(60)
+        )
+      ) as { data: Row[] | null; error: unknown };
+      const { data, error } = res;
       if (error) {
         setLoadErrorState(true);
         setList([]);
@@ -51,10 +55,14 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     }
   };
 
-  const fetchReactions = async () => {
-    if (!supabase) return;
+  const fetchReactions = useCallback(async () => {
+    const client = supabase;
+    if (!client) return undefined;
     try {
-      const { data } = await withTimeout(supabase.from("reactions").select("awakening_id, reaction_type"));
+      const res = await withTimeout(
+        Promise.resolve(client.from("reactions").select("awakening_id, reaction_type"))
+      ) as { data: Pick<ReactionRow, "awakening_id" | "reaction_type">[] | null };
+      const { data } = res;
       const counts: ReactionCounts = {};
       for (const r of (data ?? []) as Pick<ReactionRow, "awakening_id" | "reaction_type">[]) {
         if (!counts[r.awakening_id]) counts[r.awakening_id] = { gam: 0, eung: 0 };
@@ -66,10 +74,11 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     } catch {
       return undefined;
     }
-  };
+  }, []);
 
-  const fetchTop10 = async () => {
-    if (!supabase) return;
+  const fetchTop10 = useCallback(async () => {
+    const client = supabase;
+    if (!client) return;
     const counts = await fetchReactions();
     if (!counts) return;
     const sorted = Object.entries(counts)
@@ -84,8 +93,8 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     let data: unknown = null;
     try {
       const res = await withTimeout(
-        supabase.from("awakenings").select("id, note, created_at").in("id", sorted)
-      );
+        Promise.resolve(client.from("awakenings").select("id, note, created_at").in("id", sorted))
+      ) as { data: { id: string; note: string; created_at: string }[] | null };
       data = res.data;
     } catch {
       setTop10([]);
@@ -100,7 +109,7 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
       })
       .filter(Boolean) as { id: string; note: string; created_at: string; gam: number; eung: number }[];
     setTop10(withCounts);
-  };
+  }, [fetchReactions]);
 
   useEffect(() => {
     fetchList();
@@ -109,11 +118,12 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
   useEffect(() => {
     fetchReactions();
     fetchTop10();
-  }, []);
+  }, [fetchReactions, fetchTop10]);
 
   useEffect(() => {
-    if (!supabase) return;
-    const channel = supabase
+    const client = supabase;
+    if (!client) return;
+    const channel = client
       .channel("awakenings")
       .on(
         "postgres_changes",
@@ -132,13 +142,14 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
       )
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      client.removeChannel(channel);
     };
   }, []);
 
   useEffect(() => {
-    if (!supabase) return;
-    const channel = supabase
+    const client = supabase;
+    if (!client) return;
+    const channel = client
       .channel("reactions")
       .on(
         "postgres_changes",
@@ -149,9 +160,9 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
       )
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      client.removeChannel(channel);
     };
-  }, []);
+  }, [fetchReactions, fetchTop10]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -163,8 +174,9 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
   const [reactionFeedback, setReactionFeedback] = useState<{ id: string } | null>(null);
 
   const addReaction = async (awakeningId: string, type: "gam" | "eung") => {
-    if (!supabase) return;
-    const { error } = await supabase.from("reactions").insert({ awakening_id: awakeningId, reaction_type: type });
+    const client = supabase;
+    if (!client) return;
+    const { error } = await client.from("reactions").insert({ awakening_id: awakeningId, reaction_type: type } as never);
     if (!error) {
       setReactionFeedback({ id: awakeningId });
       fetchReactions();
@@ -174,20 +186,24 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
   };
 
   useEffect(() => {
-    if (!supabase || !lastRecordNickname.trim()) {
+    const client = supabase;
+    if (!client || !lastRecordNickname.trim()) {
       setMyList([]);
       return;
     }
     const fetchMyList = async () => {
       try {
-        const { data, error } = await withTimeout(
-          supabase
-            .from("awakenings")
-            .select("id, created_at, nickname, note")
-            .eq("nickname", lastRecordNickname.trim())
-            .order("created_at", { ascending: false })
-            .limit(100)
-        );
+        const res = await withTimeout(
+          Promise.resolve(
+            client
+              .from("awakenings")
+              .select("id, created_at, nickname, note")
+              .eq("nickname", lastRecordNickname.trim())
+              .order("created_at", { ascending: false })
+              .limit(100)
+          )
+        ) as { data: Row[] | null; error: unknown };
+        const { data, error } = res;
         if (!error) setMyList((data ?? []) as Row[]);
         else setMyList([]);
       } catch {
@@ -198,8 +214,9 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
   }, [lastRecordNickname]);
 
   useEffect(() => {
-    if (!supabase || !lastRecordNickname.trim()) return;
-    const channel = supabase
+    const client = supabase;
+    if (!client || !lastRecordNickname.trim()) return;
+    const channel = client
       .channel("my-list")
       .on(
         "postgres_changes",
@@ -219,7 +236,7 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
       )
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      client.removeChannel(channel);
     };
   }, [lastRecordNickname]);
 

@@ -17,6 +17,110 @@ type MemberRow = {
 
 type AdminTab = "records" | "members";
 
+function AdminExportForm() {
+  const [dataType, setDataType] = useState<string>("all");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [nickname, setNickname] = useState("");
+  const [format, setFormat] = useState<"csv" | "xls">("csv");
+
+  const [exporting, setExporting] = useState(false);
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ dataType, format });
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      if (nickname) params.set("nickname", nickname);
+      const res = await fetch(`/api/admin/export?${params.toString()}`);
+      if (!res.ok) {
+        alert("내보내기 실패");
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition");
+      const match = disposition?.match(/filename="?([^";]+)"?/);
+      const name = match ? match[1] : `awakening-export.${format}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div className="p-3 rounded-lg bg-slate-800/60 border border-slate-700 space-y-2">
+      <p className="text-xs font-medium text-slate-400">데이터 점검용 내보내기 (종류·기간·사용자·형식 선택)</p>
+      <div className="flex flex-wrap gap-2 items-end">
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-slate-500">데이터 종류</span>
+          <select
+            value={dataType}
+            onChange={(e) => setDataType(e.target.value)}
+            className="rounded bg-slate-900 border border-slate-600 text-slate-200 text-xs px-2 py-1.5"
+          >
+            <option value="all">전체(기록+반응+키워드)</option>
+            <option value="records">기록(awakenings)</option>
+            <option value="reactions">반응(reactions)</option>
+            <option value="keywords">키워드 요약</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-slate-500">기간 시작(연월일)</span>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="rounded bg-slate-900 border border-slate-600 text-slate-200 text-xs px-2 py-1.5 w-36"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-slate-500">기간 끝(연월일)</span>
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className="rounded bg-slate-900 border border-slate-600 text-slate-200 text-xs px-2 py-1.5 w-36"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-slate-500">닉네임(선택)</span>
+          <input
+            type="text"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            placeholder="전체"
+            className="rounded bg-slate-900 border border-slate-600 text-slate-200 text-xs px-2 py-1.5 w-24"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-slate-500">형식</span>
+          <select
+            value={format}
+            onChange={(e) => setFormat(e.target.value as "csv" | "xls")}
+            className="rounded bg-slate-900 border border-slate-600 text-slate-200 text-xs px-2 py-1.5"
+          >
+            <option value="csv">CSV</option>
+            <option value="xls">XLS(엑셀)</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting}
+          className="px-3 py-1.5 rounded bg-electric-blue/80 text-white text-xs hover:bg-electric-blue disabled:opacity-50"
+        >
+          {exporting ? "다운로드 중..." : "내보내기"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const [password, setPassword] = useState("");
@@ -254,7 +358,7 @@ export default function AdminPage() {
             <p className="text-xs text-slate-500 mb-2">
               사회적·공공선상 미풍양속, 정치·종교·사상·욕설·비방·협박 등 문제가 있는 경우에만 삭제 또는 수정하세요. 모든 조치는 admin_actions 테이블에 기록됩니다.
             </p>
-            <div className="mb-4">
+            <div className="mb-4 space-y-3">
               <button
                 type="button"
                 onClick={handleBackupDownload}
@@ -263,6 +367,7 @@ export default function AdminPage() {
               >
                 {backupLoading ? "백업 준비 중..." : "백업 다운로드 (원자료 + 반응 + 키워드 요약)"}
               </button>
+              <AdminExportForm />
             </div>
           </>
         )}

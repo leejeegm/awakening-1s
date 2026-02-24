@@ -34,6 +34,7 @@ const ReactionCharts = dynamic(() => import("./components/ReactionCharts"), {
   ssr: false,
   loading: () => <div className="py-4 text-center text-slate-500 text-sm">감·응 시각화 불러오는 중...</div>,
 });
+const WeeklyReportSection = dynamic(() => import("./components/WeeklyReportSection"), { ssr: false });
 
 import type { DurationType } from "./components/RecordModal";
 import SectionErrorBoundary from "./components/SectionErrorBoundary";
@@ -85,7 +86,7 @@ export default function Home() {
     usedToday: number;
     usedPeriod?: number;
   }>({ planType: "free", usedToday: 0 });
-  const [sectionKeys, setSectionKeys] = useState({ gauge: 0, points: 0, wordcloud: 0, timeline: 0, insight: 0, charts: 0 });
+  const [sectionKeys, setSectionKeys] = useState({ gauge: 0, points: 0, wordcloud: 0, timeline: 0, insight: 0, charts: 0, report: 0 });
 
   useEffect(() => {
     setAttempts(getStoredAttempts());
@@ -94,16 +95,17 @@ export default function Home() {
 
   useEffect(() => {
     if (!supabase) return;
+    if (!supabase) return;
     let cancelled = false;
     let retryId: ReturnType<typeof setTimeout> | undefined;
     const fetchCount = () => {
       if (cancelled) return;
       withTimeout(
-        supabase.from("awakenings").select("*", { count: "exact", head: true }),
+        Promise.resolve(supabase!.from("awakenings").select("*", { count: "exact", head: true })),
         12000
       )
-        .then(({ count, error }) => {
-          if (!cancelled && !error) setTotalRecords(count ?? 0);
+        .then((res: { count?: number | null; error?: unknown }) => {
+          if (!cancelled && !res.error) setTotalRecords(res.count ?? 0);
         })
         .catch(() => {
           if (!cancelled) retryId = setTimeout(fetchCount, 3000);
@@ -117,10 +119,11 @@ export default function Home() {
     };
   }, []);
   useEffect(() => {
-    if (!supabase) return;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const client = supabase;
+    if (!client) return;
+    let channel: ReturnType<typeof client.channel> | null = null;
     const t = setTimeout(() => {
-      channel = supabase
+      channel = client
         .channel("page-total")
         .on(
           "postgres_changes",
@@ -137,11 +140,12 @@ export default function Home() {
     }, 100);
     return () => {
       clearTimeout(t);
-      if (channel) supabase.removeChannel(channel);
+      if (channel) client.removeChannel(channel);
     };
   }, [lastRecordNickname]);
   useEffect(() => {
-    if (!supabase || !lastRecordNickname.trim()) {
+    const client = supabase;
+    if (!client || !lastRecordNickname.trim()) {
       setMyRecordCount(0);
       setPlanInfo({ planType: "free", usedToday: 0 });
       return;
@@ -149,14 +153,14 @@ export default function Home() {
     let cancelled = false;
     const nick = lastRecordNickname.trim();
     const fetchCount = (n: string, since: string) =>
-      supabase
+      client
         .from("awakenings")
         .select("*", { count: "exact", head: true })
         .eq("nickname", n)
         .gte("created_at", since)
         .then((r) => r.count ?? 0);
     const fetchPlan = (n: string) =>
-      supabase
+      client
         .from("participant_plans")
         .select("plan_type, valid_until")
         .eq("nickname", n)
@@ -164,11 +168,13 @@ export default function Home() {
         .then((r) => r.data as { plan_type: string; valid_until: string } | null);
 
     withTimeout(
-      supabase.from("awakenings").select("*", { count: "exact", head: true }).eq("nickname", nick),
+      Promise.resolve(
+        client.from("awakenings").select("*", { count: "exact", head: true }).eq("nickname", nick)
+      ),
       10000
     )
-      .then(({ count, error }) => {
-        if (!cancelled && !error) setMyRecordCount(count ?? 0);
+      .then((res: { count?: number | null; error?: unknown }) => {
+        if (!cancelled && !res.error) setMyRecordCount(res.count ?? 0);
       })
       .catch(() => {});
 
@@ -196,21 +202,22 @@ export default function Home() {
     const n = nickname.trim().slice(0, 20);
     const t = note.trim();
     if (!n || !t) return;
-    if (!supabase) {
+    const client = supabase;
+    if (!client) {
       setSubmitError("Supabase가 설정되지 않았습니다.");
       setSubmitStatus("error");
       return;
     }
     setSubmitError(null);
     const fetchCount = (nick: string, since: string) =>
-      supabase
+      client
         .from("awakenings")
         .select("*", { count: "exact", head: true })
         .eq("nickname", nick)
         .gte("created_at", since)
         .then((r) => r.count ?? 0);
     const fetchPlan = (nick: string) =>
-      supabase
+      client
         .from("participant_plans")
         .select("plan_type, valid_until")
         .eq("nickname", nick)
@@ -224,17 +231,15 @@ export default function Home() {
     }
     setSubmitStatus("loading");
     const noteSliced = t.slice(0, duration === "1s" ? 80 : duration === "10s" ? 60 : 100);
-    let insertPayload: { nickname: string; note: string; duration_type?: string } = {
+    type AwakeningInsert = { nickname: string; note: string; duration_type?: string };
+    const insertPayload: AwakeningInsert = {
       nickname: n,
       note: noteSliced,
       duration_type: duration,
     };
-    let { error } = await supabase.from("awakenings").insert(insertPayload);
+    let { error } = await client.from("awakenings").insert(insertPayload as never);
     if (error) {
-      const { error: err2 } = await supabase.from("awakenings").insert({
-        nickname: n,
-        note: noteSliced,
-      });
+      const { error: err2 } = await client.from("awakenings").insert({ nickname: n, note: noteSliced } as never);
       error = err2;
     }
     if (error) {
@@ -260,12 +265,22 @@ export default function Home() {
   return (
     <main className="min-h-screen pb-24">
       {/* Landing: 철학 */}
-      <section className="pt-8 px-4 text-center">
-        <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-resonans bg-clip-text text-transparent tracking-tight">
-          <span className="title-letter-awake" style={{ animationDelay: "0s" }}>자</span>
-          <span className="title-letter-awake" style={{ animationDelay: "1s" }}>깨</span>
-          <span className="title-letter-awake" style={{ animationDelay: "2s" }}>초</span>
-          <span className="title-letter-awake" style={{ animationDelay: "3s" }}>시</span>
+      <section
+        id="main-title-section"
+        className="pt-8 px-4 text-center"
+        aria-label="자깨초시"
+      >
+        <h1 className="flex justify-center items-center min-h-[2.5rem] m-0 relative z-10">
+          <img
+            src="/jakkaechosi_logo.png"
+            alt="자깨초시"
+            width={280}
+            height={70}
+            className="max-w-[min(100%,18rem)] h-auto object-contain block select-none"
+            style={{ pointerEvents: "auto" }}
+            fetchPriority="high"
+            draggable={false}
+          />
         </h1>
         <p className="mt-2 text-slate-400 text-sm max-w-lg mx-auto leading-relaxed">
           1.00초 자각 — 뇌가 자신 내면상태와 외부 자극에 의한 무의식/의식 영향으로 인지, 정서, 행동으로 나타나는 찰나의 순간을 포착합니다.
@@ -361,6 +376,15 @@ export default function Home() {
         <SectionErrorBoundary fallbackTitle="AI 인사이트를 불러오는 중 문제가 생겼습니다." onRetry={() => setSectionKeys((prev) => ({ ...prev, insight: prev.insight + 1 }))}>
           <div key={sectionKeys.insight}>
             <InsightCard lastRecordNickname={lastRecordNickname} />
+          </div>
+        </SectionErrorBoundary>
+      </section>
+
+      {/* 주별 1페이지 보고서 (AI 감정 요약, 무료=보기 / 유료=PDF 다운로드) */}
+      <section className="px-4 mt-6">
+        <SectionErrorBoundary fallbackTitle="주별 보고서를 불러올 수 없습니다." onRetry={() => setSectionKeys((prev) => ({ ...prev, report: prev.report + 1 }))}>
+          <div key={sectionKeys.report}>
+            <WeeklyReportSection defaultNickname={lastRecordNickname} />
           </div>
         </SectionErrorBoundary>
       </section>

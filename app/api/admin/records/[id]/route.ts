@@ -31,7 +31,7 @@ export async function DELETE(
     old_note: existing?.note ?? null,
     new_note: null,
     reason: "미풍양속·욕설·비방·협박 등 사유로 삭제",
-  });
+  } as never);
   return NextResponse.json({ ok: true });
 }
 
@@ -58,7 +58,7 @@ export async function PATCH(
   const existing = await getExisting(admin, id);
   const { error: updateError } = await admin
     .from("awakenings")
-    .update({ note: newNote })
+    .update({ note: newNote } as never)
     .eq("id", id);
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
@@ -69,6 +69,6 @@ export async function PATCH(
     old_note: existing?.note ?? null,
     new_note: newNote,
     reason: "미풍양속·욕설·비방·협박 등 사유로 수정",
-  });
+  } as never);
   return NextResponse.json({ ok: true });
 }
