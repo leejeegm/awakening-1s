@@ -114,6 +114,49 @@ export interface Database {
           valid_until?: string;
         };
       };
+      participant_profiles: {
+        Row: {
+          nickname: string;
+          gender: string | null;
+          age_group: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          nickname: string;
+          gender?: "male" | "female" | "defer" | null;
+          age_group?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          gender?: "male" | "female" | "defer" | null;
+          age_group?: string | null;
+          updated_at?: string;
+        };
+      };
+      ai_generated_content: {
+        Row: {
+          id: string;
+          nickname: string | null;
+          content_type: "insight_card" | "warm_message" | "weekly_summary";
+          content: string;
+          meta: unknown;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          nickname?: string | null;
+          content_type: "insight_card" | "warm_message" | "weekly_summary";
+          content: string;
+          meta?: unknown;
+          created_at?: string;
+        };
+        Update: {
+          nickname?: string | null;
+          content_type?: "insight_card" | "warm_message" | "weekly_summary";
+          content?: string;
+          meta?: unknown;
+        };
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

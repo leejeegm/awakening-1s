@@ -65,8 +65,34 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  const { data: profileRow } = await admin
+    .from("participant_profiles")
+    .select("gender, age_group")
+    .eq("nickname", nickname)
+    .maybeSingle() as { data: { gender: string | null; age_group: string | null } | null };
+
+  const genderLabel = profileRow?.gender === "male" ? "남성" : profileRow?.gender === "female" ? "여성" : null;
+  const ageLabels: Record<string, string> = {
+    "13under": "13세 이하",
+    "14_16": "14-16세",
+    "17_19": "17-19세",
+    "20s": "20대",
+    "30s": "30대",
+    "40s": "40대",
+    "50s": "50대",
+    "60s": "60대",
+    "70over": "70대 이상",
+  };
+  const ageLabel = profileRow?.age_group && profileRow.age_group !== "defer"
+    ? ageLabels[profileRow.age_group] ?? null
+    : null;
+  const profileHint =
+    genderLabel || ageLabel
+      ? ` (참고: ${[genderLabel, ageLabel].filter(Boolean).join(", ")}에 맞춰 공감할 수 있게)`
+      : "";
+
   const text = notes.join("\n");
-  const prompt = `다음은 오늘 사용자가 작성한 ${notes.length}개의 '${validDuration} 찰나' 기록입니다. 이를 바탕으로 성장을 위한 따뜻한 한마디를 1~2문장으로 한국어로 작성해 주세요. 격려와 공감, 앞으로의 성장을 담아 주세요.\n\n기록:\n${text}`;
+  const prompt = `다음은 오늘 사용자가 작성한 ${notes.length}개의 '${validDuration} 찰나' 기록입니다. 이를 바탕으로 성장을 위한 따뜻한 한마디를 1~2문장으로 한국어로 작성해 주세요. 격려와 공감, 앞으로의 성장을 담아 주세요.${profileHint}\n\n기록:\n${text}`;
 
   try {
     const res = await fetch(OPENAI_URL, {
@@ -102,6 +128,16 @@ export async function GET(request: NextRequest) {
       json.choices?.[0]?.message?.content?.trim() ??
       "따뜻한 한마디를 생성하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 
+    try {
+      await admin.from("ai_generated_content").insert({
+        nickname,
+        content_type: "warm_message",
+        content: message,
+        meta: { durationType: validDuration },
+      } as never);
+    } catch {
+      // 저장 실패해도 생성된 메시지는 반환
+    }
     return NextResponse.json({ message });
   } catch (e) {
     return NextResponse.json(

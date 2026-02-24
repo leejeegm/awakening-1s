@@ -50,8 +50,26 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  let profileHint = "";
+  if (nickname) {
+    const { data: profileRow } = await admin
+      .from("participant_profiles")
+      .select("gender, age_group")
+      .eq("nickname", nickname)
+      .maybeSingle() as { data: { gender: string | null; age_group: string | null } | null };
+    const genderLabel = profileRow?.gender === "male" ? "남성" : profileRow?.gender === "female" ? "여성" : null;
+    const ageLabels: Record<string, string> = {
+      "13under": "13세 이하", "14_16": "14-16세", "17_19": "17-19세",
+      "20s": "20대", "30s": "30대", "40s": "40대", "50s": "50대", "60s": "60대", "70over": "70대 이상",
+    };
+    const ageLabel = profileRow?.age_group && profileRow.age_group !== "defer" ? ageLabels[profileRow.age_group] ?? null : null;
+    if (genderLabel || ageLabel) {
+      profileHint = ` 성별·연령(참고: ${[genderLabel, ageLabel].filter(Boolean).join(", ")})에 맞춘 공감을 담아 주세요.`;
+    }
+  }
+
   const prompt = nickname
-    ? `다음은 한 닉네임 사용자의 자각 기록 일부입니다. 키워드와 감정을 간단히 분석해, 긍정·창의·혁신·개방 관점에서 한 문단짜리 맞춤 카드 뉴스(동기부여 문구)를 한국어로 작성해 주세요. 2문장 이내로 짧게.\n\n기록:\n${textSample}`
+    ? `다음은 한 닉네임 사용자의 자각 기록 일부입니다. 키워드와 감정을 간단히 분석해, 긍정·창의·혁신·개방 관점에서 한 문단짜리 맞춤 카드 뉴스(동기부여 문구)를 한국어로 작성해 주세요. 2문장 이내로 짧게.${profileHint}\n\n기록:\n${textSample}`
     : `다음은 여러 참여자의 자각 기록 일부입니다. 공통 키워드와 감응 트렌드를 간단히 분석해, 한 문단짜리 "이번 주 감응 트렌드" 카드 뉴스를 한국어로 작성해 주세요. 긍정·창의·혁신·개방 중 하나를 강조하고 2문장 이내로.\n\n기록:\n${textSample}`;
 
   try {
@@ -88,6 +106,16 @@ export async function GET(request: NextRequest) {
       json.choices?.[0]?.message?.content?.trim() ??
       "감응 트렌드를 분석 중입니다. 잠시 후 다시 시도해 주세요.";
 
+    try {
+      await admin.from("ai_generated_content").insert({
+        nickname: nickname || null,
+        content_type: "insight_card",
+        content: card,
+        meta: nickname ? {} : { scope: "trend" },
+      } as never);
+    } catch {
+      // 저장 실패해도 생성된 카드는 반환
+    }
     return NextResponse.json({ card });
   } catch (e) {
     return NextResponse.json(

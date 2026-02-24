@@ -36,7 +36,7 @@ const ReactionCharts = dynamic(() => import("./components/ReactionCharts"), {
 });
 const WeeklyReportSection = dynamic(() => import("./components/WeeklyReportSection"), { ssr: false });
 
-import type { DurationType } from "./components/RecordModal";
+import type { DurationType, GenderType, AgeGroupType } from "./components/RecordModal";
 import SectionErrorBoundary from "./components/SectionErrorBoundary";
 import { checkRecordLimit, type PlanType } from "@/lib/planLimits";
 
@@ -198,7 +198,12 @@ export default function Home() {
     recordSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [attempts]);
 
-  const handleRecordSubmit = async (nickname: string, note: string) => {
+  const handleRecordSubmit = async (
+    nickname: string,
+    note: string,
+    gender?: GenderType | null,
+    ageGroup?: AgeGroupType | null
+  ) => {
     const n = nickname.trim().slice(0, 20);
     const t = note.trim();
     if (!n || !t) return;
@@ -246,6 +251,19 @@ export default function Home() {
       setSubmitError("저장에 실패했습니다. 다시 시도해 주세요.");
       setSubmitStatus("error");
       return;
+    }
+    if (gender != null || ageGroup != null) {
+      await client
+        .from("participant_profiles")
+        .upsert(
+          {
+            nickname: n,
+            gender: gender ?? null,
+            age_group: ageGroup ?? null,
+            updated_at: new Date().toISOString(),
+          } as never,
+          { onConflict: "nickname" }
+        );
     }
     setSubmitStatus("done");
     setRecordModalOpen(false);

@@ -5,17 +5,49 @@ import { X } from "lucide-react";
 
 export type DurationType = "1s" | "10s" | "100s";
 
+export type GenderType = "male" | "female" | "defer";
+export type AgeGroupType =
+  | "13under"
+  | "14_16"
+  | "17_19"
+  | "20s"
+  | "30s"
+  | "40s"
+  | "50s"
+  | "60s"
+  | "70over"
+  | "defer";
+
 const LIMITS: Record<DurationType, { label: string; maxLength: number }> = {
   "1s": { label: "한줄 기록하기입니다.", maxLength: 80 },
   "10s": { label: "열 단어 내외 기록하기입니다.", maxLength: 60 },
   "100s": { label: "백 자 내외 기록하기입니다.", maxLength: 100 },
 };
 
+const GENDER_OPTIONS: { value: GenderType; label: string }[] = [
+  { value: "defer", label: "보류" },
+  { value: "male", label: "남" },
+  { value: "female", label: "여" },
+];
+
+const AGE_OPTIONS: { value: AgeGroupType; label: string }[] = [
+  { value: "defer", label: "보류" },
+  { value: "13under", label: "13세 이하" },
+  { value: "14_16", label: "14-16세" },
+  { value: "17_19", label: "17-19세" },
+  { value: "20s", label: "20대" },
+  { value: "30s", label: "30대" },
+  { value: "40s", label: "40대" },
+  { value: "50s", label: "50대" },
+  { value: "60s", label: "60대" },
+  { value: "70over", label: "70대 이상" },
+];
+
 type Props = {
   open: boolean;
   duration: DurationType;
   onClose: () => void;
-  onSubmit: (nickname: string, note: string) => Promise<void>;
+  onSubmit: (nickname: string, note: string, gender?: GenderType | null, ageGroup?: AgeGroupType | null) => Promise<void>;
   submitStatus: "idle" | "loading" | "done" | "error";
   errorMessage: string | null;
 };
@@ -30,6 +62,8 @@ export default function RecordModal({
 }: Props) {
   const [nickname, setNickname] = useState("");
   const [note, setNote] = useState("");
+  const [gender, setGender] = useState<GenderType | "">("defer");
+  const [ageGroup, setAgeGroup] = useState<AgeGroupType | "">("defer");
 
   const limit = LIMITS[duration];
 
@@ -38,7 +72,12 @@ export default function RecordModal({
     const n = nickname.trim();
     const t = note.trim();
     if (!n || !t) return;
-    await onSubmit(n, t);
+    await onSubmit(
+      n,
+      t,
+      gender === "" ? null : gender,
+      ageGroup === "" ? null : ageGroup
+    );
     setNote("");
     if (submitStatus === "done") onClose();
   };
@@ -70,6 +109,32 @@ export default function RecordModal({
               maxLength={20}
               className="w-full px-4 py-2.5 min-h-[44px] rounded-lg bg-slate-800 border border-slate-600 text-slate-100 placeholder-slate-500 focus:border-electric-blue outline-none text-base touch-manipulation"
             />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">성별 (선택)</label>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value as GenderType | "")}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-sm"
+                >
+                  {GENDER_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">연령대 (선택)</label>
+                <select
+                  value={ageGroup}
+                  onChange={(e) => setAgeGroup(e.target.value as AgeGroupType | "")}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-sm"
+                >
+                  {AGE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <textarea
               placeholder={
                 duration === "1s"
