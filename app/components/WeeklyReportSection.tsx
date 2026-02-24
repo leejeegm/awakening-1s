@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FileText, Download } from "lucide-react";
 import { getThisWeekSundayKST } from "@/lib/weekRange";
 
@@ -19,17 +19,26 @@ type Props = { defaultNickname?: string };
 
 export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
   const [nickname, setNickname] = useState(defaultNickname);
+
+  // 현재 로그인(기록 저장) 중인 닉네임이 바뀌면 입력란을 그 닉네임으로 맞춤
+  useEffect(() => {
+    const current = (defaultNickname ?? "").trim();
+    if (current) setNickname(current);
+  }, [defaultNickname]);
   const [week, setWeek] = useState(() => getThisWeekSundayKST());
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [data, setData] = useState<ReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [otherPassword, setOtherPassword] = useState("");
+  const [verifiedOtherNicknames, setVerifiedOtherNicknames] = useState<Set<string>>(new Set());
 
-  const loadReport = async () => {
-    if (!nickname.trim()) {
-      setError("닉네임을 입력하세요.");
-      return;
-    }
+  const isOtherNickname =
+    nickname.trim() !== "" &&
+    defaultNickname.trim() !== "" &&
+    nickname.trim().toLowerCase() !== defaultNickname.trim().toLowerCase();
+
+  const doLoadReport = async () => {
     setError(null);
     setLoading(true);
     setData(null);
@@ -46,6 +55,33 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadReport = async () => {
+    if (!nickname.trim()) {
+      setError("닉네임을 입력하세요.");
+      return;
+    }
+    if (isOtherNickname) {
+      if (!verifiedOtherNicknames.has(nickname.trim().toLowerCase())) {
+        if (!otherPassword.trim()) {
+          setError("다른 닉네임의 기록은 개인정보 보호를 위해 해당 닉네임의 비밀번호를 입력해 주세요.");
+          return;
+        }
+        const verifyRes = await fetch("/api/participant/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nickname: nickname.trim(), password: otherPassword }),
+        });
+        const verifyJson = (await verifyRes.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (!verifyRes.ok || !verifyJson.ok) {
+          setError(verifyJson.error ?? "비밀번호가 일치하지 않습니다.");
+          return;
+        }
+        setVerifiedOtherNicknames((prev) => new Set([...prev, nickname.trim().toLowerCase()]));
+      }
+    }
+    await doLoadReport();
   };
 
   const downloadPdf = async () => {
@@ -79,7 +115,7 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
         주별 1페이지 보고서 (AI 감정 요약)
       </h3>
       <p className="text-xs text-slate-500">
-        주별 마지막날(일요일) 0시 KST 기준. 무료: 보기만 가능. 유료 플랜(초°·분°·시°설계자): PDF 다운로드 가능.
+        주별 마지막날(일요일) 0시 KST 기준. 무료: 보기만 가능. 유료 플랜(초°·분°·시°설계자): PDF 다운로드 가능. 다른 닉네임 조회 시 해당 닉네임의 비밀번호 입력이 필요합니다.
       </p>
       <div className="flex flex-wrap gap-2 items-end">
         <label className="flex flex-col gap-0.5">
@@ -102,6 +138,19 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
             className="rounded-lg bg-slate-900 border border-slate-600 text-slate-200 text-sm px-3 py-2 w-40"
           />
         </label>
+        {isOtherNickname && (
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] text-slate-500">비밀번호 (해당 닉네임)</span>
+            <input
+              type="password"
+              value={otherPassword}
+              onChange={(e) => setOtherPassword(e.target.value)}
+              placeholder="개인정보 보호용"
+              className="rounded-lg bg-slate-900 border border-slate-600 text-slate-200 text-sm px-3 py-2 w-36"
+              autoComplete="current-password"
+            />
+          </label>
+        )}
         <button
           type="button"
           onClick={loadReport}

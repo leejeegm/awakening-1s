@@ -157,6 +157,28 @@ export interface Database {
           meta?: unknown;
         };
       };
+      experiment_control: {
+        Row: {
+          id: number;
+          ended: boolean;
+          ended_at: string | null;
+          ended_by: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          ended?: boolean;
+          ended_at?: string | null;
+          ended_by?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          ended?: boolean;
+          ended_at?: string | null;
+          ended_by?: string | null;
+          updated_at?: string;
+        };
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

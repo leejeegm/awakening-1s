@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 
 export type DurationType = "1s" | "10s" | "100s";
@@ -50,6 +50,8 @@ type Props = {
   onSubmit: (nickname: string, note: string, gender?: GenderType | null, ageGroup?: AgeGroupType | null) => Promise<void>;
   submitStatus: "idle" | "loading" | "done" | "error";
   errorMessage: string | null;
+  defaultPersonalNickname?: string;
+  sharedNickname?: string | null;
 };
 
 export default function RecordModal({
@@ -59,17 +61,30 @@ export default function RecordModal({
   onSubmit,
   submitStatus,
   errorMessage,
+  defaultPersonalNickname = "",
+  sharedNickname = null,
 }: Props) {
+  const [recordAs, setRecordAs] = useState<"personal" | "shared">("shared");
   const [nickname, setNickname] = useState("");
   const [note, setNote] = useState("");
   const [gender, setGender] = useState<GenderType | "">("defer");
   const [ageGroup, setAgeGroup] = useState<AgeGroupType | "">("defer");
 
+  const effectiveNickname = sharedNickname && recordAs === "shared" ? sharedNickname : nickname.trim();
+  const showNicknameChoice = !!sharedNickname?.trim();
+
+  useEffect(() => {
+    if (open) {
+      setNickname(defaultPersonalNickname ?? "");
+      setRecordAs(sharedNickname?.trim() ? "shared" : "personal");
+    }
+  }, [open, defaultPersonalNickname, sharedNickname]);
+
   const limit = LIMITS[duration];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const n = nickname.trim();
+    const n = effectiveNickname.slice(0, 20);
     const t = note.trim();
     if (!n || !t) return;
     await onSubmit(
@@ -101,14 +116,58 @@ export default function RecordModal({
         <div className="p-4 space-y-4 overflow-y-auto">
           <p className="text-sm text-electric-blue font-medium">{limit.label}</p>
           <form onSubmit={handleSubmit} className="space-y-3">
-            <input
-              type="text"
-              placeholder="닉네임 (익명)"
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              maxLength={20}
-              className="w-full px-4 py-2.5 min-h-[44px] rounded-lg bg-slate-800 border border-slate-600 text-slate-100 placeholder-slate-500 focus:border-electric-blue outline-none text-base touch-manipulation"
-            />
+            {showNicknameChoice ? (
+              <div className="space-y-2">
+                <span className="block text-xs text-slate-500">기록할 닉네임</span>
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="recordAs"
+                      checked={recordAs === "shared"}
+                      onChange={() => setRecordAs("shared")}
+                      className="rounded-full border-slate-500 text-electric-blue"
+                    />
+                    <span className="text-sm text-slate-200">감응(공동): {sharedNickname}</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="recordAs"
+                      checked={recordAs === "personal"}
+                      onChange={() => {
+                        setRecordAs("personal");
+                        if (!nickname.trim()) setNickname(defaultPersonalNickname ?? "");
+                      }}
+                      className="rounded-full border-slate-500 text-electric-blue"
+                    />
+                    <span className="text-sm text-slate-200">개인</span>
+                  </label>
+                </div>
+                {recordAs === "personal" && (
+                  <input
+                    type="text"
+                    placeholder="개인 닉네임"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    maxLength={20}
+                    className="w-full px-4 py-2.5 min-h-[44px] rounded-lg bg-slate-800 border border-slate-600 text-slate-100 placeholder-slate-500 text-base touch-manipulation"
+                  />
+                )}
+                {recordAs === "personal" && !nickname.trim() && (
+                  <p className="text-xs text-slate-500">개인 닉네임을 입력하세요.</p>
+                )}
+              </div>
+            ) : (
+              <input
+                type="text"
+                placeholder="닉네임 (익명)"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                maxLength={20}
+                className="w-full px-4 py-2.5 min-h-[44px] rounded-lg bg-slate-800 border border-slate-600 text-slate-100 placeholder-slate-500 focus:border-electric-blue outline-none text-base touch-manipulation"
+              />
+            )}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs text-slate-500 mb-1">성별 (선택)</label>
@@ -152,7 +211,7 @@ export default function RecordModal({
             <p className="text-xs text-slate-500">{note.length} / {limit.maxLength}</p>
             <button
               type="submit"
-              disabled={submitStatus === "loading"}
+              disabled={submitStatus === "loading" || (showNicknameChoice && recordAs === "personal" && !nickname.trim())}
               className="w-full min-h-[44px] py-2.5 rounded-lg bg-gradient-resonans text-white font-medium disabled:opacity-60 touch-manipulation"
             >
               {submitStatus === "loading" ? "저장 중..." : submitStatus === "done" ? "저장됨" : "기록하기"}

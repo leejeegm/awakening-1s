@@ -100,6 +100,17 @@ export async function GET(request: NextRequest) {
   const keywordSummary = buildKeywordSummary(notes);
   const sentimentSummary = await getSentimentSummary(notes);
 
+  try {
+    await admin.from("ai_generated_content").insert({
+      nickname,
+      content_type: "weekly_summary",
+      content: sentimentSummary,
+      meta: { week, label },
+    } as never);
+  } catch {
+    // 저장 실패해도 보고서 응답은 그대로 반환
+  }
+
   const { data: planRow } = await admin
     .from("participant_plans")
     .select("plan_type, valid_until")

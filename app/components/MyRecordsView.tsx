@@ -18,7 +18,12 @@ async function sha256Hex(text: string): Promise<string> {
     .join("");
 }
 
-export default function MyRecordsView() {
+type Props = {
+  /** 내 기록 보기로 조회 성공 시, 이 닉네임을 앱 전체의 '현재 사용자'로 반영해 주별 보고서·이전 멘트 등에 사용 */
+  onNicknameVerified?: (nickname: string) => void;
+};
+
+export default function MyRecordsView({ onNicknameVerified }: Props) {
   const [open, setOpen] = useState(false);
   const [nickname, setNickname] = useState("");
   const [password, setPassword] = useState("");
@@ -87,6 +92,7 @@ export default function MyRecordsView() {
       }
       setRecords(list ?? []);
       setStatus("ok");
+      onNicknameVerified?.(n);
     } catch {
       setMessage("오류가 발생했습니다.");
       setStatus("error");

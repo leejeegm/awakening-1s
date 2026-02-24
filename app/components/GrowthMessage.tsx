@@ -54,6 +54,10 @@ export default function GrowthMessage({
   const [warmMessage, setWarmMessage] = useState<string | null>(null);
   const [warmLoading, setWarmLoading] = useState(false);
   const [warmError, setWarmError] = useState<string | null>(null);
+  const [pastOpen, setPastOpen] = useState(false);
+  const [pastItems, setPastItems] = useState<{ id: string; content_type: string; content: string; meta: unknown; created_at: string }[]>([]);
+  const [pastLoading, setPastLoading] = useState(false);
+  const [pastError, setPastError] = useState<string | null>(null);
 
   const speak = useCallback(
     (text: string) => {
@@ -113,6 +117,36 @@ export default function GrowthMessage({
       setWarmLoading(false);
     }
   }, [lastRecordNickname, warmDuration]);
+
+  const getNickname = useCallback(() => {
+    return (lastRecordNickname || "").trim() || (typeof window !== "undefined" ? localStorage.getItem("lastRecordNickname") ?? "" : "").trim();
+  }, [lastRecordNickname]);
+
+  const fetchPastMessages = useCallback(async () => {
+    const nick = getNickname();
+    if (!nick) {
+      setPastError("닉네임이 없습니다. 먼저 자각 기록을 남겨 주세요.");
+      setPastItems([]);
+      return;
+    }
+    setPastLoading(true);
+    setPastError(null);
+    try {
+      const res = await fetch(`/api/ai/past-messages?nickname=${encodeURIComponent(nick)}&limit=30`);
+      const data = (await res.json()) as { items?: typeof pastItems; error?: string };
+      if (!res.ok) {
+        setPastError(data.error ?? "불러오기 실패");
+        setPastItems([]);
+        return;
+      }
+      setPastItems(data.items ?? []);
+    } catch {
+      setPastError("네트워크 오류");
+      setPastItems([]);
+    } finally {
+      setPastLoading(false);
+    }
+  }, [getNickname]);
 
   const wordsWithColors = useMemo(() => {
     const words = splitWords(GROWTH_TEXT);
@@ -243,6 +277,80 @@ export default function GrowthMessage({
               {warmMessage}
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => {
+              setPastOpen(true);
+              fetchPastMessages();
+            }}
+            className="mt-2 text-xs text-slate-500 hover:text-slate-300 underline"
+          >
+            이전에 받은 멘트 다시 보기
+          </button>
+        </div>
+      )}
+
+      {pastOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+          onClick={() => setPastOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="이전에 받은 멘트"
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-md overflow-hidden rounded-xl bg-slate-800 border border-slate-600 shadow-xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center p-3 border-b border-slate-600">
+              <h3 className="text-sm font-medium text-slate-200">이전에 받은 멘트</h3>
+              <button
+                type="button"
+                onClick={() => setPastOpen(false)}
+                className="text-slate-500 hover:text-slate-300 p-1"
+                aria-label="닫기"
+              >
+                ×
+              </button>
+            </div>
+            <div className="overflow-y-auto p-3 space-y-3 flex-1">
+              {pastLoading && <p className="text-sm text-slate-500">불러오는 중…</p>}
+              {pastError && <p className="text-sm text-red-400">{pastError}</p>}
+              {!pastLoading && !pastError && pastItems.length === 0 && (
+                <p className="text-sm text-slate-500">저장된 멘트가 없습니다.</p>
+              )}
+              {!pastLoading &&
+                pastItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3 rounded-lg bg-slate-700/80 border border-slate-600 text-sm"
+                  >
+                    <div className="flex justify-between items-center gap-2 text-xs text-slate-500 mb-1">
+                      <span>
+                        {item.content_type === "warm_message"
+                          ? "따뜻한 한마디"
+                          : item.content_type === "insight_card"
+                            ? "맞춤 감응"
+                            : item.content_type === "weekly_summary"
+                              ? "주별 요약"
+                              : item.content_type}
+                      </span>
+                      <time>{new Date(item.created_at).toLocaleString("ko-KR")}</time>
+                    </div>
+                    <p className="text-slate-200 leading-relaxed break-words">
+                      {typeof item.content === "string" ? item.content : JSON.stringify(item.content)}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => speak(typeof item.content === "string" ? item.content : "")}
+                      className="mt-2 text-xs px-2 py-1 rounded bg-slate-600 text-slate-300 hover:bg-slate-500"
+                    >
+                      말하기
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </div>
         </div>
       )}
 

@@ -35,6 +35,7 @@ const ReactionCharts = dynamic(() => import("./components/ReactionCharts"), {
   loading: () => <div className="py-4 text-center text-slate-500 text-sm">감·응 시각화 불러오는 중...</div>,
 });
 const WeeklyReportSection = dynamic(() => import("./components/WeeklyReportSection"), { ssr: false });
+const ResonanceNicknameSection = dynamic(() => import("./components/ResonanceNicknameSection"), { ssr: false });
 
 import type { DurationType, GenderType, AgeGroupType } from "./components/RecordModal";
 import SectionErrorBoundary from "./components/SectionErrorBoundary";
@@ -87,10 +88,22 @@ export default function Home() {
     usedPeriod?: number;
   }>({ planType: "free", usedToday: 0 });
   const [sectionKeys, setSectionKeys] = useState({ gauge: 0, points: 0, wordcloud: 0, timeline: 0, insight: 0, charts: 0, report: 0 });
+  const [experimentEnded, setExperimentEnded] = useState(false);
+  const [sharedNickname, setSharedNickname] = useState<string | null>(null);
 
   useEffect(() => {
     setAttempts(getStoredAttempts());
     setLastRecordNickname(getStoredNickname());
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/experiment-status")
+      .then((r) => r.json().catch(() => ({})))
+      .then((data: { ended?: boolean }) => setExperimentEnded(!!data.ended));
+  }, []);
+
+  const onExperimentEnded = useCallback(() => {
+    setExperimentEnded(true);
   }, []);
 
   useEffect(() => {
@@ -280,6 +293,17 @@ export default function Home() {
     } catch {}
   };
 
+  if (experimentEnded) {
+    return (
+      <main className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <p className="text-xl font-medium text-slate-200">실험종료합니다.</p>
+        <p className="mt-4 text-sm text-slate-500 max-w-md">
+          한시적 실험 운영이 종료되었습니다. 참여해 주셔서 감사합니다.
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen pb-24">
       {/* Landing: 철학 */}
@@ -322,7 +346,14 @@ export default function Home() {
       <section id="record-section" ref={recordSectionRef} className="px-4 mt-6 scroll-mt-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-slate-400">자각 기록</h2>
-          <MyRecordsView />
+          <MyRecordsView
+            onNicknameVerified={(nick) => {
+              setLastRecordNickname(nick);
+              try {
+                localStorage.setItem(NICKNAME_KEY, nick);
+              } catch {}
+            }}
+          />
         </div>
 
         {/* 1초 / 10초 / 100초 찰나 선택 */}
@@ -353,6 +384,16 @@ export default function Home() {
         </button>
       </section>
 
+      {/* 감응 닉네임 (공동): 친구·연인과 공유해 같은 닉네임으로 실험 */}
+      <section className="px-4 mt-4">
+        <ResonanceNicknameSection
+          currentNickname={lastRecordNickname}
+          sharedNickname={sharedNickname}
+          onSharedNicknameSet={setSharedNickname}
+          onExperimentEnded={onExperimentEnded}
+        />
+      </section>
+
       <RecordModal
         open={recordModalOpen}
         duration={duration}
@@ -364,6 +405,8 @@ export default function Home() {
         onSubmit={handleRecordSubmit}
         submitStatus={submitStatus}
         errorMessage={submitError}
+        defaultPersonalNickname={lastRecordNickname}
+        sharedNickname={sharedNickname}
       />
 
       {/* 감응 성장 문구 + 음성/중지/소리/감응 버튼 + 플랜 한도 */}

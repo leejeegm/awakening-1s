@@ -15,7 +15,23 @@ type MemberRow = {
   password_hint: string | null;
 };
 
-type AdminTab = "records" | "members";
+type ProfileRow = {
+  nickname: string;
+  gender: string | null;
+  age_group: string | null;
+  updated_at: string;
+};
+
+type AiContentRow = {
+  id: string;
+  nickname: string;
+  content_type: string;
+  content: string;
+  meta: unknown;
+  created_at: string;
+};
+
+type AdminTab = "records" | "members" | "profiles" | "ai_content";
 
 function AdminExportForm() {
   const [dataType, setDataType] = useState<string>("all");
@@ -128,7 +144,13 @@ export default function AdminPage() {
   const [tab, setTab] = useState<AdminTab>("records");
   const [records, setRecords] = useState<RecordRow[]>([]);
   const [members, setMembers] = useState<MemberRow[]>([]);
+  const [profiles, setProfiles] = useState<ProfileRow[]>([]);
+  const [aiContent, setAiContent] = useState<AiContentRow[]>([]);
+  const [aiStats, setAiStats] = useState<Record<string, number>>({});
+  const [aiTotal, setAiTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [profilesLoading, setProfilesLoading] = useState(false);
+  const [aiContentLoading, setAiContentLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNote, setEditNote] = useState("");
   const [editingNickname, setEditingNickname] = useState<string | null>(null);
@@ -171,6 +193,8 @@ export default function AdminPage() {
     setLoggedIn(false);
     setRecords([]);
     setMembers([]);
+    setProfiles([]);
+    setAiContent([]);
   };
 
   const loadMembers = useCallback(async () => {
@@ -201,6 +225,38 @@ export default function AdminPage() {
     }
   }, []);
 
+  const loadProfiles = useCallback(async () => {
+    setProfilesLoading(true);
+    try {
+      const res = await fetch("/api/admin/profiles");
+      if (!res.ok) throw new Error("프로필 조회 실패");
+      const json = await res.json();
+      setProfiles(json.profiles ?? []);
+    } catch {
+      setProfiles([]);
+    } finally {
+      setProfilesLoading(false);
+    }
+  }, []);
+
+  const loadAiContent = useCallback(async () => {
+    setAiContentLoading(true);
+    try {
+      const res = await fetch("/api/admin/ai-content?limit=50");
+      if (!res.ok) throw new Error("AI 콘텐츠 조회 실패");
+      const json = await res.json();
+      setAiContent(json.items ?? []);
+      setAiStats(json.stats ?? {});
+      setAiTotal(json.total ?? 0);
+    } catch {
+      setAiContent([]);
+      setAiStats({});
+      setAiTotal(0);
+    } finally {
+      setAiContentLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (loggedIn === true) loadRecords();
   }, [loggedIn, loadRecords]);
@@ -208,6 +264,14 @@ export default function AdminPage() {
   useEffect(() => {
     if (loggedIn === true && tab === "members") loadMembers();
   }, [loggedIn, tab, loadMembers]);
+
+  useEffect(() => {
+    if (loggedIn === true && tab === "profiles") loadProfiles();
+  }, [loggedIn, tab, loadProfiles]);
+
+  useEffect(() => {
+    if (loggedIn === true && tab === "ai_content") loadAiContent();
+  }, [loggedIn, tab, loadAiContent]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("이 기록을 삭제하시겠습니까?")) return;
@@ -351,6 +415,20 @@ export default function AdminPage() {
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${tab === "members" ? "bg-electric-blue/80 text-white" : "bg-slate-700 text-slate-400 hover:bg-slate-600"}`}
           >
             회원 로그 정보 (participant_keys)
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("profiles")}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${tab === "profiles" ? "bg-electric-blue/80 text-white" : "bg-slate-700 text-slate-400 hover:bg-slate-600"}`}
+          >
+            프로필 (participant_profiles)
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("ai_content")}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${tab === "ai_content" ? "bg-electric-blue/80 text-white" : "bg-slate-700 text-slate-400 hover:bg-slate-600"}`}
+          >
+            AI 콘텐츠 (ai_generated_content)
           </button>
         </div>
         {tab === "records" && (
@@ -505,6 +583,66 @@ export default function AdminPage() {
             )}
             {tab === "members" && !loading && members.length === 0 && (
               <p className="text-slate-500 py-8 text-center">등록된 회원이 없습니다.</p>
+            )}
+          </>
+        )}
+        {tab === "profiles" && (
+          <>
+            <p className="text-xs text-slate-500 mb-4">
+              성별·연령대 등 프로필 (participant_profiles). 총 {profiles.length}명.
+            </p>
+            {profilesLoading ? (
+              <p className="text-slate-500 py-8">불러오는 중...</p>
+            ) : (
+              <ul className="space-y-3">
+                {profiles.map((p) => (
+                  <li
+                    key={p.nickname}
+                    className="p-3 rounded-lg bg-slate-800/60 border border-slate-700"
+                  >
+                    <div className="text-sm font-medium text-slate-200">{p.nickname}</div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      성별: {p.gender ?? "—"} · 연령대: {p.age_group ?? "—"} · 수정: {new Date(p.updated_at).toLocaleString("ko-KR")}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {tab === "profiles" && !profilesLoading && profiles.length === 0 && (
+              <p className="text-slate-500 py-8 text-center">프로필이 없습니다.</p>
+            )}
+          </>
+        )}
+        {tab === "ai_content" && (
+          <>
+            <p className="text-xs text-slate-500 mb-4">
+              AI 생성 콘텐츠 (ai_generated_content). 총 {aiTotal}건. 유형별: {Object.entries(aiStats)
+                .map(([k, v]) => `${k}=${v}`)
+                .join(", ") || "—"}
+            </p>
+            {aiContentLoading ? (
+              <p className="text-slate-500 py-8">불러오는 중...</p>
+            ) : (
+              <ul className="space-y-3">
+                {aiContent.map((row) => (
+                  <li
+                    key={row.id}
+                    className="p-3 rounded-lg bg-slate-800/60 border border-slate-700"
+                  >
+                    <div className="flex justify-between items-start gap-2 text-xs text-slate-500">
+                      <span>{row.nickname}</span>
+                      <span>{row.content_type}</span>
+                      <time>{new Date(row.created_at).toLocaleString("ko-KR")}</time>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-300 break-words line-clamp-3">
+                      {typeof row.content === "string" ? row.content : JSON.stringify(row.content)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {tab === "ai_content" && !aiContentLoading && aiContent.length === 0 && (
+              <p className="text-slate-500 py-8 text-center">AI 콘텐츠가 없습니다.</p>
             )}
           </>
         )}
