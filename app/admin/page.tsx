@@ -634,6 +634,13 @@ export default function AdminPage() {
                       <span>{row.content_type}</span>
                       <time>{new Date(row.created_at).toLocaleString("ko-KR")}</time>
                     </div>
+                    {typeof row.meta === "object" &&
+                      row.meta !== null &&
+                      (row.meta as { source?: string }).source === "rule" && (
+                        <p className="mt-1 text-[10px] text-amber-300">
+                          일시적 문제로 룰베이스 제공
+                        </p>
+                      )}
                     <p className="mt-1 text-sm text-slate-300 break-words line-clamp-3">
                       {typeof row.content === "string" ? row.content : JSON.stringify(row.content)}
                     </p>

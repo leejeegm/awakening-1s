@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { buildRuleBasedWarmMessage } from "@/lib/ruleBasedAi";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
@@ -29,13 +30,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { error: "닉네임이 필요합니다.", message: null },
       { status: 400 }
-    );
-  }
-
-  if (!OPENAI_API_KEY) {
-    return NextResponse.json(
-      { error: "OPENAI_API_KEY가 설정되지 않았습니다.", message: null },
-      { status: 503 }
     );
   }
 
@@ -94,7 +88,33 @@ export async function GET(request: NextRequest) {
   const text = notes.join("\n");
   const prompt = `다음은 오늘 사용자가 작성한 ${notes.length}개의 '${validDuration} 찰나' 기록입니다. 이를 바탕으로 성장을 위한 따뜻한 한마디를 1~2문장으로 한국어로 작성해 주세요. 격려와 공감, 앞으로의 성장을 담아 주세요.${profileHint}\n\n기록:\n${text}`;
 
+  const ruleBased = () =>
+    buildRuleBasedWarmMessage({
+      notes,
+      durationType: validDuration as "1s" | "10s" | "100s",
+      profileHint: { genderLabel, ageLabel },
+    });
+
   try {
+    if (!OPENAI_API_KEY) {
+      const message = ruleBased();
+      try {
+        await admin.from("ai_generated_content").insert({
+          nickname,
+          content_type: "warm_message",
+          content: message,
+          meta: { durationType: validDuration, source: "rule", reason: "missing_openai_key" },
+        } as never);
+      } catch {
+        // 저장 실패해도 생성된 메시지는 반환
+      }
+      return NextResponse.json({
+        message,
+        source: "rule",
+        warning: "일시적 문제로 룰베이스 메시지로 제공 중입니다.",
+      });
+    }
+
     const res = await fetch(OPENAI_URL, {
       method: "POST",
       headers: {
@@ -116,11 +136,28 @@ export async function GET(request: NextRequest) {
     });
 
     if (!res.ok) {
-      const err = await res.text();
-      return NextResponse.json(
-        { error: "OpenAI 요청 실패", detail: err, message: null },
-        { status: 502 }
-      );
+      const err = await res.text().catch(() => "");
+      const message = ruleBased();
+      try {
+        await admin.from("ai_generated_content").insert({
+          nickname,
+          content_type: "warm_message",
+          content: message,
+          meta: {
+            durationType: validDuration,
+            source: "rule",
+            openaiStatus: res.status,
+            openaiError: err?.slice(0, 2000) || null,
+          },
+        } as never);
+      } catch {
+        // ignore
+      }
+      return NextResponse.json({
+        message,
+        source: "rule",
+        warning: "일시적 문제로 룰베이스 메시지로 제공 중입니다.",
+      });
     }
 
     const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
@@ -133,16 +170,32 @@ export async function GET(request: NextRequest) {
         nickname,
         content_type: "warm_message",
         content: message,
-        meta: { durationType: validDuration },
+        meta: { durationType: validDuration, source: "openai", model: "gpt-4o" },
       } as never);
     } catch {
       // 저장 실패해도 생성된 메시지는 반환
     }
-    return NextResponse.json({ message });
+    return NextResponse.json({ message, source: "openai" });
   } catch (e) {
-    return NextResponse.json(
-      { error: String(e), message: null },
-      { status: 500 }
-    );
+    const message = ruleBased();
+    try {
+      await admin.from("ai_generated_content").insert({
+        nickname,
+        content_type: "warm_message",
+        content: message,
+        meta: {
+          durationType: validDuration,
+          source: "rule",
+          openaiException: String(e).slice(0, 2000),
+        },
+      } as never);
+    } catch {
+      // ignore
+    }
+    return NextResponse.json({
+      message,
+      source: "rule",
+      warning: "일시적 문제로 룰베이스 메시지로 제공 중입니다.",
+    });
   }
 }

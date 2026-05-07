@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWeekRangeKST } from "@/lib/weekRange";
+import { buildRuleBasedWeeklySummary } from "@/lib/ruleBasedAi";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
@@ -28,8 +29,9 @@ function buildKeywordSummary(notes: string[]): { keyword: string; count: number 
     .map(([keyword, count]) => ({ keyword, count }));
 }
 
-async function getSentimentSummary(notes: string[]): Promise<string> {
-  if (!OPENAI_API_KEY || notes.length === 0) return "감정 분석을 위해 OPENAI_API_KEY가 필요합니다.";
+async function getSentimentSummary(notes: string[]): Promise<{ summary: string; source: "openai" | "rule" }> {
+  if (notes.length === 0) return { summary: "이번 주 기록이 없어 요약할 내용이 없습니다.", source: "rule" };
+  if (!OPENAI_API_KEY) return { summary: buildRuleBasedWeeklySummary(notes), source: "rule" };
   const text = notes.slice(0, 30).join("\n");
   try {
     const res = await fetch(OPENAI_URL, {
@@ -54,12 +56,13 @@ async function getSentimentSummary(notes: string[]): Promise<string> {
         max_tokens: 300,
       }),
     });
-    if (!res.ok) return "감정 분석 요청 실패";
+    if (!res.ok) return { summary: buildRuleBasedWeeklySummary(notes), source: "rule" };
     const json = await res.json();
     const content = json.choices?.[0]?.message?.content?.trim();
-    return content || "요약 없음";
+    if (!content) return { summary: buildRuleBasedWeeklySummary(notes), source: "rule" };
+    return { summary: content, source: "openai" };
   } catch {
-    return "감정 분석 중 오류";
+    return { summary: buildRuleBasedWeeklySummary(notes), source: "rule" };
   }
 }
 
@@ -98,14 +101,14 @@ export async function GET(request: NextRequest) {
   const rows = (records ?? []) as RecordRow[];
   const notes = rows.map((r) => r.note).filter(Boolean);
   const keywordSummary = buildKeywordSummary(notes);
-  const sentimentSummary = await getSentimentSummary(notes);
+  const { summary: sentimentSummary, source: sentimentSource } = await getSentimentSummary(notes);
 
   try {
     await admin.from("ai_generated_content").insert({
       nickname,
       content_type: "weekly_summary",
       content: sentimentSummary,
-      meta: { week, label },
+      meta: { week, label, source: sentimentSource, model: sentimentSource === "openai" ? "gpt-4o" : null },
     } as never);
   } catch {
     // 저장 실패해도 보고서 응답은 그대로 반환
@@ -129,6 +132,7 @@ export async function GET(request: NextRequest) {
     recordCount: rows.length,
     records: rows,
     sentimentSummary,
+    sentimentSource,
     keywordSummary,
     canDownload: !!canDownload,
   };

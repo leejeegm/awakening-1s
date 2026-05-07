@@ -49,11 +49,12 @@ export default function GrowthMessage({
   const prevUsedTodayRef = useRef<number | undefined>(undefined);
   const [volume, setVolume] = useState(0.8);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [warmOpen, setWarmOpen] = useState(false);
+  const [warmOpen, setWarmOpen] = useState(true);
   const [warmDuration, setWarmDuration] = useState<"1s" | "10s" | "100s">("1s");
   const [warmMessage, setWarmMessage] = useState<string | null>(null);
   const [warmLoading, setWarmLoading] = useState(false);
   const [warmError, setWarmError] = useState<string | null>(null);
+  const [warmWarning, setWarmWarning] = useState<string | null>(null);
   const [pastOpen, setPastOpen] = useState(false);
   const [pastItems, setPastItems] = useState<{ id: string; content_type: string; content: string; meta: unknown; created_at: string }[]>([]);
   const [pastLoading, setPastLoading] = useState(false);
@@ -100,16 +101,22 @@ export default function GrowthMessage({
     }
     setWarmLoading(true);
     setWarmError(null);
+    setWarmWarning(null);
     setWarmMessage(null);
     try {
       const res = await fetch(
         `/api/ai/warm-message?nickname=${encodeURIComponent(nick)}&durationType=${warmDuration}`
       );
-      const data = (await res.json()) as { message?: string; error?: string };
+      const data = (await res.json()) as { message?: string; error?: string; warning?: string; source?: string };
       if (!res.ok) {
         setWarmError(data.error ?? "요청 실패");
         return;
       }
+      setWarmWarning(
+        data.source === "rule"
+          ? (data.warning ?? "일시적 문제로 룰베이스 메시지로 제공 중입니다.")
+          : null
+      );
       setWarmMessage(data.message ?? null);
     } catch {
       setWarmError("네트워크 오류");
@@ -224,7 +231,7 @@ export default function GrowthMessage({
           aria-label="감응 분석"
         >
           <Sparkles className="w-4 h-4" />
-          <span className="text-xs font-medium">감응</span>
+          <span className="text-xs font-medium">감응 {warmOpen ? "닫기" : "보기"}</span>
         </button>
       </p>
 
@@ -272,6 +279,7 @@ export default function GrowthMessage({
             )}
           </div>
           {warmError && <p className="text-xs text-red-400">{warmError}</p>}
+          {warmWarning && <p className="text-xs text-amber-300">{warmWarning}</p>}
           {warmMessage && (
             <div className="p-3 rounded-lg bg-slate-800/80 border border-slate-600 text-sm text-slate-200 leading-relaxed">
               {warmMessage}
@@ -334,6 +342,13 @@ export default function GrowthMessage({
                             : item.content_type === "weekly_summary"
                               ? "주별 요약"
                               : item.content_type}
+                        {typeof item.meta === "object" &&
+                          item.meta !== null &&
+                          (item.meta as { source?: string }).source === "rule" && (
+                            <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-400/30">
+                              룰베이스
+                            </span>
+                          )}
                       </span>
                       <time>{new Date(item.created_at).toLocaleString("ko-KR")}</time>
                     </div>

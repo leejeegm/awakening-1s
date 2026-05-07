@@ -11,6 +11,7 @@ type ReportData = {
   recordCount: number;
   records: { id: string; created_at: string; note: string }[];
   sentimentSummary: string;
+  sentimentSource?: "openai" | "rule";
   keywordSummary: { keyword: string; count: number }[];
   canDownload: boolean;
 };
@@ -185,7 +186,14 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
           </div>
           {data.sentimentSummary && (
             <div>
-              <p className="text-[10px] text-slate-500 mb-0.5">AI 감정 요약</p>
+              <p className="text-[10px] text-slate-500 mb-0.5 flex items-center gap-2">
+                <span>AI 감정 요약</span>
+                {data.sentimentSource === "rule" && (
+                  <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-400/30">
+                    일시적 문제로 룰베이스 제공
+                  </span>
+                )}
+              </p>
               <p className="text-sm text-slate-300 leading-relaxed">{data.sentimentSummary}</p>
             </div>
           )}
