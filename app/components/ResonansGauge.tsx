@@ -38,14 +38,11 @@ export default function ResonansGauge({ myAttempts, lastRecordNickname = "" }: P
   const [showRandomNote, setShowRandomNote] = useState<string | null>(null);
 
   useEffect(() => {
-    const client = supabase;
-    if (!client) return;
     const fetchCount = async () => {
       try {
-        const res = await withTimeout(
-          Promise.resolve(client.from("awakenings").select("*", { count: "exact", head: true }))
-        ) as { count: number | null; error: unknown };
-        if (!res.error) setTotal(res.count ?? 0);
+        const res = await withTimeout(fetch("/api/stats/awakenings"), 12000);
+        const json = (await res.json().catch(() => ({}))) as { totalRecords?: number | null };
+        if (typeof json.totalRecords === "number") setTotal(json.totalRecords);
       } catch {}
     };
     fetchCount();
@@ -68,14 +65,10 @@ export default function ResonansGauge({ myAttempts, lastRecordNickname = "" }: P
   }, []);
 
   const fetchNotes = useCallback(async () => {
-    const client = supabase;
-    if (!client) return;
     try {
-      const res = await withTimeout(
-        Promise.resolve(client.from("awakenings").select("note").limit(80))
-      ) as { data: { note: string }[] | null };
-      const data = res.data;
-      const notes = (data ?? []).map((r) => r.note);
+      const res = await withTimeout(fetch("/api/feed/awakenings"), 12000);
+      const json = (await res.json().catch(() => ({}))) as { items?: { note: string }[] };
+      const notes = (Array.isArray(json.items) ? json.items : []).map((r) => r.note);
       setTopWords(topKeywords(notes, 15));
     } catch {}
   }, []);
@@ -99,19 +92,18 @@ export default function ResonansGauge({ myAttempts, lastRecordNickname = "" }: P
   }, [fetchNotes]);
 
   useEffect(() => {
-    const client = supabase;
-    if (!client || !lastRecordNickname.trim()) {
+    if (!lastRecordNickname.trim()) {
       setMyRecordNotes([]);
       return;
     }
     const fetchMyNotes = async () => {
       try {
         const res = await withTimeout(
-          Promise.resolve(
-            client.from("awakenings").select("note").eq("nickname", lastRecordNickname.trim())
-          )
-        ) as { data: { note: string }[] | null };
-        setMyRecordNotes((res.data ?? []).map((r) => r.note));
+          fetch(`/api/feed/awakenings?nickname=${encodeURIComponent(lastRecordNickname.trim())}`),
+          12000
+        );
+        const json = (await res.json().catch(() => ({}))) as { items?: { note: string }[] };
+        setMyRecordNotes((Array.isArray(json.items) ? json.items : []).map((r) => r.note));
       } catch {
         setMyRecordNotes([]);
       }

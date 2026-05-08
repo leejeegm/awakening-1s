@@ -47,7 +47,11 @@ type Props = {
   open: boolean;
   duration: DurationType;
   onClose: () => void;
-  onSubmit: (nickname: string, note: string, gender?: GenderType | null, ageGroup?: AgeGroupType | null) => Promise<void>;
+  onSubmit: (
+    nickname: string,
+    note: string,
+    opts?: { gender?: GenderType | null; ageGroup?: AgeGroupType | null; isPublic?: boolean }
+  ) => Promise<void>;
   submitStatus: "idle" | "loading" | "done" | "error";
   errorMessage: string | null;
   defaultPersonalNickname?: string;
@@ -82,17 +86,15 @@ export default function RecordModal({
 
   const limit = LIMITS[duration];
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = async (isPublic: boolean) => {
     const n = effectiveNickname.slice(0, 20);
     const t = note.trim();
     if (!n || !t) return;
-    await onSubmit(
-      n,
-      t,
-      gender === "" ? null : gender,
-      ageGroup === "" ? null : ageGroup
-    );
+    await onSubmit(n, t, {
+      gender: gender === "" ? null : gender,
+      ageGroup: ageGroup === "" ? null : ageGroup,
+      isPublic,
+    });
     setNote("");
     if (submitStatus === "done") onClose();
   };
@@ -114,8 +116,8 @@ export default function RecordModal({
           </button>
         </div>
         <div className="p-4 space-y-4 overflow-y-auto">
-          <p className="text-sm text-electric-blue font-medium">{limit.label}</p>
-          <form onSubmit={handleSubmit} className="space-y-3">
+          <p className="text-emphasis text-electric-blue">{limit.label}</p>
+          <div className="space-y-3">
             {showNicknameChoice ? (
               <div className="space-y-2">
                 <span className="block text-xs text-slate-500">기록할 닉네임</span>
@@ -209,14 +211,34 @@ export default function RecordModal({
               className="w-full px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 placeholder-slate-500 focus:border-electric-blue outline-none resize-none text-base touch-manipulation"
             />
             <p className="text-xs text-slate-500">{note.length} / {limit.maxLength}</p>
-            <button
-              type="submit"
-              disabled={submitStatus === "loading" || (showNicknameChoice && recordAs === "personal" && !nickname.trim())}
-              className="w-full min-h-[44px] py-2.5 rounded-lg bg-gradient-resonans text-white font-medium disabled:opacity-60 touch-manipulation"
-            >
-              {submitStatus === "loading" ? "저장 중..." : submitStatus === "done" ? "저장됨" : "기록하기"}
-            </button>
-          </form>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => submit(false)}
+                disabled={
+                  submitStatus === "loading" ||
+                  (showNicknameChoice && recordAs === "personal" && !nickname.trim())
+                }
+                className="w-full min-h-[44px] py-2.5 rounded-lg bg-gradient-resonans text-white font-semibold text-[12px] disabled:opacity-60 touch-manipulation"
+              >
+                {submitStatus === "loading" ? "저장 중..." : "저장(나만보기)"}
+              </button>
+              <button
+                type="button"
+                onClick={() => submit(true)}
+                disabled={
+                  submitStatus === "loading" ||
+                  (showNicknameChoice && recordAs === "personal" && !nickname.trim())
+                }
+                className="w-full min-h-[44px] py-2.5 rounded-lg bg-deep-violet/80 hover:bg-deep-violet text-white font-semibold text-[12px] disabled:opacity-60 touch-manipulation"
+              >
+                {submitStatus === "loading" ? "저장 중..." : "공유저장(내글공개)"}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              저장(나만보기)은 내 기록 보기로만 확인됩니다. 공유저장은 익명으로 공개될 수 있으며, 일시적 점검에 따라 공유가 제한될 수 있습니다.
+            </p>
+          </div>
           {errorMessage && <p className="text-sm text-red-400">{errorMessage}</p>}
         </div>
       </div>

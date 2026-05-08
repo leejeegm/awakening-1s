@@ -31,7 +31,21 @@ type AiContentRow = {
   created_at: string;
 };
 
-type AdminTab = "records" | "members" | "profiles" | "ai_content";
+type AdminTab = "records" | "members" | "profiles" | "ai_content" | "moderation_quarantine";
+
+/** 모더레이션 삭제(보관) 목록(API 응답) */
+type QuarantineRow = {
+  id: string;
+  created_at: string;
+  nickname: string;
+  note: string;
+  is_public: boolean;
+  moderation_reason: string | null;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  purge_hold: boolean;
+  purgeEligible: boolean;
+};
 
 function AdminExportForm() {
   const [dataType, setDataType] = useState<string>("all");
@@ -148,6 +162,11 @@ export default function AdminPage() {
   const [aiContent, setAiContent] = useState<AiContentRow[]>([]);
   const [aiStats, setAiStats] = useState<Record<string, number>>({});
   const [aiTotal, setAiTotal] = useState(0);
+  const [quarantineDays, setQuarantineDays] = useState(30);
+  const [purgeCutoffIso, setPurgeCutoffIso] = useState("");
+  const [moderationArchived, setModerationArchived] = useState<QuarantineRow[]>([]);
+  const [mqLoading, setMqLoading] = useState(false);
+  const [purgeBusy, setPurgeBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [profilesLoading, setProfilesLoading] = useState(false);
   const [aiContentLoading, setAiContentLoading] = useState(false);
@@ -257,6 +276,22 @@ export default function AdminPage() {
     }
   }, []);
 
+  const loadModerationArchive = useCallback(async () => {
+    setMqLoading(true);
+    try {
+      const res = await fetch("/api/admin/moderation-quarantine");
+      if (!res.ok) throw new Error("보관 목록 조회 실패");
+      const json = await res.json();
+      setQuarantineDays(typeof json.quarantineDays === "number" ? json.quarantineDays : 30);
+      setPurgeCutoffIso(typeof json.purgeCutoffIso === "string" ? json.purgeCutoffIso : "");
+      setModerationArchived(Array.isArray(json.items) ? json.items : []);
+    } catch {
+      setModerationArchived([]);
+    } finally {
+      setMqLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (loggedIn === true) loadRecords();
   }, [loggedIn, loadRecords]);
@@ -272,6 +307,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (loggedIn === true && tab === "ai_content") loadAiContent();
   }, [loggedIn, tab, loadAiContent]);
+
+  useEffect(() => {
+    if (loggedIn === true && tab === "moderation_quarantine") loadModerationArchive();
+  }, [loggedIn, tab, loadModerationArchive]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("이 기록을 삭제하시겠습니까?")) return;
@@ -328,6 +367,59 @@ export default function AdminPage() {
     } finally {
       setBackupLoading(false);
     }
+  };
+
+  const handlePurgeModerationArchive = async () => {
+    const n = moderationArchived.filter((r) => r.purgeEligible).length;
+    if (
+      !confirm(
+        `폐기 가능 건 ${n}건을 DB에서 완전 삭제합니다. (보관 ${quarantineDays}일 경과·유보 아님·반응 등은 연쇄 삭제될 수 있음) 계속할까요?`
+      )
+    ) {
+      return;
+    }
+    setPurgeBusy(true);
+    try {
+      const res = await fetch("/api/admin/moderation-purge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error ?? "폐기 실패");
+        return;
+      }
+      alert(`완료: ${data.purgedCount ?? 0}건 폐기 (후보 ${data.candidateCount ?? 0}건)`);
+      await loadModerationArchive();
+    } finally {
+      setPurgeBusy(false);
+    }
+  };
+
+  const handleTogglePurgeHold = async (id: string, nextHold: boolean) => {
+    const res = await fetch(`/api/admin/moderation-quarantine/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ purge_hold: nextHold }),
+    });
+    if (!res.ok) {
+      alert((await res.json().catch(() => ({}))).error ?? "유보 설정 실패");
+      return;
+    }
+    const cutoffMs = Date.now() - quarantineDays * 86400000;
+    setModerationArchived((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const dt = r.deleted_at ? new Date(r.deleted_at).getTime() : 0;
+        return {
+          ...r,
+          purge_hold: nextHold,
+          purgeEligible:
+            !nextHold && r.deleted_at != null && dt <= cutoffMs,
+        };
+      })
+    );
   };
 
   const handleSaveHint = async () => {
@@ -401,7 +493,7 @@ export default function AdminPage() {
             로그아웃
           </button>
         </div>
-        <div className="flex gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4">
           <button
             type="button"
             onClick={() => setTab("records")}
@@ -430,7 +522,47 @@ export default function AdminPage() {
           >
             AI 콘텐츠 (ai_generated_content)
           </button>
+          <button
+            type="button"
+            onClick={() => setTab("moderation_quarantine")}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${tab === "moderation_quarantine" ? "bg-electric-blue/80 text-white" : "bg-slate-700 text-slate-400 hover:bg-slate-600"}`}
+          >
+            삭제 보관함 (폐기)
+          </button>
         </div>
+        {tab === "moderation_quarantine" && (
+          <>
+            <p className="text-xs text-slate-500 mb-2">
+              AI·운영상 삭제 처리된 글(moderation_state = deleted). 기본적으로 삭제 시각 기준{" "}
+              <span className="text-slate-300 font-medium">{quarantineDays}일</span>이 지나면 폐기 대상입니다.
+              {purgeCutoffIso && (
+                <span className="block mt-1 text-slate-600">
+                  (현재 폐기 기준: 삭제 시각이{" "}
+                  {new Date(purgeCutoffIso).toLocaleString("ko-KR")} 이전인 건 중 유보가 아닌 것)
+                </span>
+              )}
+              「삭제 유보」는 purge_hold 로 일괄 폐기에서 제외됩니다. 환경변수 MODERATION_QUARANTINE_DAYS 로 7·30·90일 등 조정 가능.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                type="button"
+                disabled={purgeBusy || mqLoading}
+                onClick={loadModerationArchive}
+                className="px-3 py-2 rounded-lg bg-slate-700 text-slate-200 text-sm hover:bg-slate-600 disabled:opacity-50"
+              >
+                새로고침
+              </button>
+              <button
+                type="button"
+                disabled={purgeBusy || mqLoading}
+                onClick={handlePurgeModerationArchive}
+                className="px-3 py-2 rounded-lg bg-red-900/50 text-red-200 text-sm hover:bg-red-900/70 disabled:opacity-50"
+              >
+                {purgeBusy ? "폐기 중..." : `폐기 대상 일괄 삭제 (${moderationArchived.filter((r) => r.purgeEligible).length}건)`}
+              </button>
+            </div>
+          </>
+        )}
         {tab === "records" && (
           <>
             <p className="text-xs text-slate-500 mb-2">
@@ -610,6 +742,60 @@ export default function AdminPage() {
             )}
             {tab === "profiles" && !profilesLoading && profiles.length === 0 && (
               <p className="text-slate-500 py-8 text-center">프로필이 없습니다.</p>
+            )}
+          </>
+        )}
+        {tab === "moderation_quarantine" && (
+          <>
+            {mqLoading ? (
+              <p className="text-slate-500 py-8">목록 불러오는 중...</p>
+            ) : (
+              <ul className="space-y-3">
+                {moderationArchived.map((r) => (
+                  <li
+                    key={r.id}
+                    className={`p-3 rounded-lg border ${
+                      r.purgeEligible
+                        ? "bg-amber-950/40 border-amber-800/60"
+                        : "bg-slate-800/60 border-slate-700"
+                    }`}
+                  >
+                    <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500">
+                      <span className="text-slate-300 font-medium">{r.nickname}</span>
+                      {r.deleted_at && (
+                        <time>{new Date(r.deleted_at).toLocaleString("ko-KR")} 삭제</time>
+                      )}
+                    </div>
+                    {r.purgeEligible ? (
+                      <p className="mt-1 text-[11px] text-amber-200">폐기 가능 (기간 충족·유보 아님)</p>
+                    ) : r.purge_hold ? (
+                      <p className="mt-1 text-[11px] text-slate-500">삭제 유보 중 — 일괄 폐기 제외</p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-slate-500">보관 기간 미충족</p>
+                    )}
+                    <p className="mt-1 text-sm text-slate-300 break-words">{r.note}</p>
+                    {(r.moderation_reason ?? "").trim() !== "" && (
+                      <p className="mt-1 text-[10px] text-slate-500 break-words">
+                        사유: {r.moderation_reason}
+                      </p>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleTogglePurgeHold(r.id, !r.purge_hold)
+                        }
+                        className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600"
+                      >
+                        {r.purge_hold ? "유보 해제" : "삭제 유보"}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {!mqLoading && moderationArchived.length === 0 && (
+              <p className="text-slate-500 py-8 text-center">삭제 보관 중인 글이 없습니다.</p>
             )}
           </>
         )}

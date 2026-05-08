@@ -15,5 +15,6 @@ export async function GET() {
   if (error || !data) {
     return NextResponse.json({ ended: false });
   }
-  return NextResponse.json({ ended: !!data.ended });
+  const row = data as { ended?: boolean | null };
+  return NextResponse.json({ ended: !!row.ended });
 }

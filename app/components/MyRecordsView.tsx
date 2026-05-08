@@ -79,18 +79,13 @@ export default function MyRecordsView({ onNicknameVerified }: Props) {
         return;
       }
 
-      const { data: list, error } = await supabase
-        .from("awakenings")
-        .select("id, created_at, nickname, note")
-        .eq("nickname", n)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        setMessage("조회에 실패했습니다.");
-        setStatus("error");
-        return;
-      }
-      setRecords(list ?? []);
+      const feedRes = await fetch(
+        `/api/feed/awakenings?nickname=${encodeURIComponent(n)}`,
+        { method: "GET" }
+      );
+      const feedJson = (await feedRes.json().catch(() => ({}))) as { items?: AwakeningRow[] };
+      const items = Array.isArray(feedJson.items) ? (feedJson.items as AwakeningRow[]) : [];
+      setRecords(items);
       setStatus("ok");
       onNicknameVerified?.(n);
     } catch {
@@ -114,16 +109,16 @@ export default function MyRecordsView({ onNicknameVerified }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-electric-blue transition"
+        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-deep-violet/60 hover:bg-deep-violet text-white font-semibold text-[12px] transition"
       >
         <Lock className="w-4 h-4" />
-        내 자각 실험 결과 보기
+        내 자각 실험 결과 보기(닉네임 비번 설정)
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
           <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-slate-700">
-              <h3 className="font-semibold text-slate-100">내 자각 실험 결과 보기</h3>
+              <h3 className="text-[12px] font-bold text-slate-100">내 자각 실험 결과 보기(닉네임 비번 설정)</h3>
               <button
                 type="button"
                 onClick={close}

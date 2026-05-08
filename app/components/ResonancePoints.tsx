@@ -4,15 +4,15 @@ const POINTS_PER_RECORD = 100;
 
 type Props = {
   /** 닉네임별 내가 제출한 기록 건수 (DB 기준) */
-  myRecordCount: number;
+  myRecordCount: number | null;
   /** 모든 닉네임 참여자 기록 총합 (DB 기준) */
-  totalRecords: number;
+  totalRecords: number | null;
 };
 
 export default function ResonancePoints({ myRecordCount, totalRecords }: Props) {
-  const myPoints = myRecordCount * POINTS_PER_RECORD;
-  const totalPoints = totalRecords * POINTS_PER_RECORD;
-  const hasTotal = totalRecords > 0;
+  const myPoints = (myRecordCount ?? 0) * POINTS_PER_RECORD;
+  const totalPoints = (totalRecords ?? 0) * POINTS_PER_RECORD;
+  const hasTotal = typeof totalRecords === "number";
 
   return (
     <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/50 space-y-4">

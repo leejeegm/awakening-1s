@@ -73,7 +73,7 @@ function getStoredNickname(): string {
 export default function Home() {
   const recordSectionRef = useRef<HTMLElement>(null);
   const [attempts, setAttempts] = useState(0);
-  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalRecords, setTotalRecords] = useState<number | null>(null);
   const [duration, setDuration] = useState<DurationType>("1s");
   const [recordModalOpen, setRecordModalOpen] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
@@ -81,7 +81,7 @@ export default function Home() {
   const [lastRecordNickname, setLastRecordNickname] = useState(() =>
     typeof window !== "undefined" ? (localStorage.getItem(NICKNAME_KEY) ?? "").trim() : ""
   );
-  const [myRecordCount, setMyRecordCount] = useState(0);
+  const [myRecordCount, setMyRecordCount] = useState<number | null>(null);
   const [planInfo, setPlanInfo] = useState<{
     planType: PlanType;
     usedToday: number;
@@ -107,30 +107,38 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!supabase) return;
-    if (!supabase) return;
     let cancelled = false;
-    let retryId: ReturnType<typeof setTimeout> | undefined;
-    const fetchCount = () => {
-      if (cancelled) return;
-      withTimeout(
-        Promise.resolve(supabase!.from("awakenings").select("*", { count: "exact", head: true })),
-        12000
-      )
-        .then((res: { count?: number | null; error?: unknown }) => {
-          if (!cancelled && !res.error) setTotalRecords(res.count ?? 0);
-        })
-        .catch(() => {
-          if (!cancelled) retryId = setTimeout(fetchCount, 3000);
-        });
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      try {
+        const res = await withTimeout(
+          fetch(
+            `/api/stats/awakenings${
+              lastRecordNickname.trim()
+                ? `?nickname=${encodeURIComponent(lastRecordNickname.trim())}`
+                : ""
+            }`
+          ),
+          12000
+        );
+        const json = (await res.json().catch(() => ({}))) as {
+          totalRecords?: number | null;
+          myRecordCount?: number | null;
+        };
+        if (cancelled) return;
+        if (typeof json.totalRecords === "number") setTotalRecords(json.totalRecords);
+        else if (json.totalRecords === null) setTotalRecords(null);
+        if (typeof json.myRecordCount === "number") setMyRecordCount(json.myRecordCount);
+        else if (json.myRecordCount === null) setMyRecordCount(lastRecordNickname.trim() ? null : 0);
+      } catch {}
+      if (!cancelled) t = setTimeout(tick, 8000);
     };
-    const t = setTimeout(fetchCount, 0);
+    tick();
     return () => {
       cancelled = true;
-      clearTimeout(t);
-      if (retryId != null) clearTimeout(retryId);
+      if (t) clearTimeout(t);
     };
-  }, []);
+  }, [lastRecordNickname]);
   useEffect(() => {
     const client = supabase;
     if (!client) return;
@@ -143,9 +151,9 @@ export default function Home() {
           { event: "INSERT", schema: "public", table: "awakenings" },
           (payload) => {
             const nick = (payload.new as { nickname?: string })?.nickname;
-            setTotalRecords((prev) => prev + 1);
+            setTotalRecords((prev) => (typeof prev === "number" ? prev + 1 : 1));
             if (nick?.trim() === lastRecordNickname.trim()) {
-              setMyRecordCount((prev) => prev + 1);
+              setMyRecordCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
             }
           }
         )
@@ -187,7 +195,8 @@ export default function Home() {
       10000
     )
       .then((res: { count?: number | null; error?: unknown }) => {
-        if (!cancelled && !res.error) setMyRecordCount(res.count ?? 0);
+        // RLS 변경 이후 클라이언트 count는 실패할 수 있어, 서버 stats를 우선으로 둡니다.
+        if (!cancelled && !res.error && typeof res.count === "number") setMyRecordCount(res.count);
       })
       .catch(() => {});
 
@@ -214,33 +223,31 @@ export default function Home() {
   const handleRecordSubmit = async (
     nickname: string,
     note: string,
-    gender?: GenderType | null,
-    ageGroup?: AgeGroupType | null
+    opts?: { gender?: GenderType | null; ageGroup?: AgeGroupType | null; isPublic?: boolean }
   ) => {
     const n = nickname.trim().slice(0, 20);
     const t = note.trim();
     if (!n || !t) return;
-    const client = supabase;
-    if (!client) {
-      setSubmitError("Supabase가 설정되지 않았습니다.");
-      setSubmitStatus("error");
-      return;
-    }
     setSubmitError(null);
+    const client = supabase;
     const fetchCount = (nick: string, since: string) =>
       client
-        .from("awakenings")
-        .select("*", { count: "exact", head: true })
-        .eq("nickname", nick)
-        .gte("created_at", since)
-        .then((r) => r.count ?? 0);
+        ? client
+            .from("awakenings")
+            .select("*", { count: "exact", head: true })
+            .eq("nickname", nick)
+            .gte("created_at", since)
+            .then((r) => r.count ?? 0)
+        : Promise.resolve(0);
     const fetchPlan = (nick: string) =>
       client
-        .from("participant_plans")
-        .select("plan_type, valid_until")
-        .eq("nickname", nick)
-        .maybeSingle()
-        .then((r) => r.data as { plan_type: string; valid_until: string } | null);
+        ? client
+            .from("participant_plans")
+            .select("plan_type, valid_until")
+            .eq("nickname", nick)
+            .maybeSingle()
+            .then((r) => r.data as { plan_type: string; valid_until: string } | null)
+        : Promise.resolve(null);
     const limitResult = await checkRecordLimit(n, fetchCount, fetchPlan);
     if (!limitResult.allowed) {
       setSubmitError(limitResult.message ?? "기록 한도를 초과했습니다.");
@@ -249,39 +256,37 @@ export default function Home() {
     }
     setSubmitStatus("loading");
     const noteSliced = t.slice(0, duration === "1s" ? 80 : duration === "10s" ? 60 : 100);
-    type AwakeningInsert = { nickname: string; note: string; duration_type?: string };
-    const insertPayload: AwakeningInsert = {
-      nickname: n,
-      note: noteSliced,
-      duration_type: duration,
-    };
-    let { error } = await client.from("awakenings").insert(insertPayload as never);
-    if (error) {
-      const { error: err2 } = await client.from("awakenings").insert({ nickname: n, note: noteSliced } as never);
-      error = err2;
-    }
-    if (error) {
+    try {
+      const res = await fetch("/api/awakenings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nickname: n,
+          note: noteSliced,
+          durationType: duration,
+          gender: opts?.gender ?? null,
+          ageGroup: opts?.ageGroup ?? null,
+          isPublic: !!opts?.isPublic,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; notice?: string };
+      if (!res.ok || !json.ok) {
+        setSubmitError(json.error ?? "저장에 실패했습니다. 다시 시도해 주세요.");
+        setSubmitStatus("error");
+        return;
+      }
+      if (json.notice) {
+        setSubmitError(json.notice);
+      }
+    } catch {
       setSubmitError("저장에 실패했습니다. 다시 시도해 주세요.");
       setSubmitStatus("error");
       return;
     }
-    if (gender != null || ageGroup != null) {
-      await client
-        .from("participant_profiles")
-        .upsert(
-          {
-            nickname: n,
-            gender: gender ?? null,
-            age_group: ageGroup ?? null,
-            updated_at: new Date().toISOString(),
-          } as never,
-          { onConflict: "nickname" }
-        );
-    }
     setSubmitStatus("done");
     setRecordModalOpen(false);
     setSubmitStatus("idle");
-    setMyRecordCount((prev) => prev + 1);
+    setMyRecordCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
     setPlanInfo((prev) => ({
       ...prev,
       usedToday: prev.usedToday + 1,
@@ -363,7 +368,7 @@ export default function Home() {
               key={d}
               type="button"
               onClick={() => setDuration(d)}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+              className={`flex-1 py-2 rounded-lg text-[12px] font-semibold transition ${
                 duration === d
                   ? "bg-gradient-resonans text-white"
                   : "bg-slate-800 text-slate-400 hover:bg-slate-700"
@@ -378,7 +383,7 @@ export default function Home() {
         <button
           type="button"
           onClick={() => setRecordModalOpen(true)}
-          className="w-full py-2.5 rounded-lg bg-gradient-resonans text-white font-medium"
+          className="w-full py-3 rounded-lg bg-gradient-resonans text-white font-semibold text-[12px]"
         >
           기록하기
         </button>

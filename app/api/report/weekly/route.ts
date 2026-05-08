@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
     try {
       const { jsPDF } = await import("jspdf");
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pageW = doc.getPageWidth();
+      const pageW = doc.internal.pageSize.getWidth();
       let y = 20;
       const lineH = 7;
 

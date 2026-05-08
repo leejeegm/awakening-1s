@@ -79,7 +79,9 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
           setError(verifyJson.error ?? "비밀번호가 일치하지 않습니다.");
           return;
         }
-        setVerifiedOtherNicknames((prev) => new Set([...prev, nickname.trim().toLowerCase()]));
+        setVerifiedOtherNicknames((prev) =>
+          new Set([...Array.from(prev), nickname.trim().toLowerCase()])
+        );
       }
     }
     await doLoadReport();

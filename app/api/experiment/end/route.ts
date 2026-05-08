@@ -33,7 +33,8 @@ export async function POST(request: NextRequest) {
   if (keyError || !row) {
     return NextResponse.json({ error: "해당 닉네임이 없거나 비밀번호가 일치하지 않습니다." }, { status: 401 });
   }
-  if (row.password_hash !== sha256Hex(password)) {
+  const keyRow = row as { password_hash?: string | null };
+  if (!keyRow.password_hash || keyRow.password_hash !== sha256Hex(password)) {
     return NextResponse.json({ error: "비밀번호가 일치하지 않습니다." }, { status: 401 });
   }
 

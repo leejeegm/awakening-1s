@@ -23,30 +23,12 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
   const [viewMode, setViewMode] = useState<"list" | "top10">("list");
 
   const fetchList = async () => {
-    const client = supabase;
-    if (!client) {
-      setLoading(false);
-      return;
-    }
     setLoadErrorState(false);
     setLoading(true);
     try {
-      const res = await withTimeout(
-        Promise.resolve(
-          client
-            .from("awakenings")
-            .select("id, created_at, nickname, note")
-            .order("created_at", { ascending: false })
-            .limit(60)
-        )
-      ) as { data: Row[] | null; error: unknown };
-      const { data, error } = res;
-      if (error) {
-        setLoadErrorState(true);
-        setList([]);
-        return;
-      }
-      setList((data ?? []) as Row[]);
+      const res = await withTimeout(fetch("/api/feed/awakenings"), 12000);
+      const json = (await res.json().catch(() => ({}))) as { items?: Row[] };
+      setList(Array.isArray(json.items) ? (json.items as Row[]) : []);
     } catch {
       setLoadErrorState(true);
       setList([]);
@@ -113,6 +95,12 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
 
   useEffect(() => {
     fetchList();
+  }, []);
+
+  // 클라이언트 RLS/Realtime 제약과 무관하게 “기존처럼” 흐르게 하기 위해 주기적으로 갱신
+  useEffect(() => {
+    const t = setInterval(fetchList, 6000);
+    return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
@@ -186,26 +174,18 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
   };
 
   useEffect(() => {
-    const client = supabase;
-    if (!client || !lastRecordNickname.trim()) {
+    if (!lastRecordNickname.trim()) {
       setMyList([]);
       return;
     }
     const fetchMyList = async () => {
       try {
         const res = await withTimeout(
-          Promise.resolve(
-            client
-              .from("awakenings")
-              .select("id, created_at, nickname, note")
-              .eq("nickname", lastRecordNickname.trim())
-              .order("created_at", { ascending: false })
-              .limit(100)
-          )
-        ) as { data: Row[] | null; error: unknown };
-        const { data, error } = res;
-        if (!error) setMyList((data ?? []) as Row[]);
-        else setMyList([]);
+          fetch(`/api/feed/awakenings?nickname=${encodeURIComponent(lastRecordNickname.trim())}`),
+          12000
+        );
+        const json = (await res.json().catch(() => ({}))) as { items?: Row[] };
+        setMyList(Array.isArray(json.items) ? (json.items as Row[]) : []);
       } catch {
         setMyList([]);
       }

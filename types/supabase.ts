@@ -16,6 +16,12 @@ export interface Database {
           nickname: string;
           note: string;
           duration_type: string;
+          is_public: boolean;
+          moderation_state: "ok" | "deleted";
+          moderation_reason: string | null;
+          deleted_at: string | null;
+          deleted_by: string | null;
+          purge_hold: boolean;
         };
         Insert: {
           id?: string;
@@ -23,6 +29,12 @@ export interface Database {
           nickname: string;
           note: string;
           duration_type?: string;
+          is_public?: boolean;
+          moderation_state?: "ok" | "deleted";
+          moderation_reason?: string | null;
+          deleted_at?: string | null;
+          deleted_by?: string | null;
+          purge_hold?: boolean;
         };
         Update: {
           id?: string;
@@ -30,6 +42,12 @@ export interface Database {
           nickname?: string;
           note?: string;
           duration_type?: string;
+          is_public?: boolean;
+          moderation_state?: "ok" | "deleted";
+          moderation_reason?: string | null;
+          deleted_at?: string | null;
+          deleted_by?: string | null;
+          purge_hold?: boolean;
         };
       };
       participant_keys: {
