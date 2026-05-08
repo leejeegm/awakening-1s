@@ -114,7 +114,7 @@ export default function ResonanceNicknameSection({
           {!sharedNickname ? (
             <form onSubmit={handleUse} className="flex flex-wrap gap-2 items-end">
               <label className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-slate-500">닉네임</span>
+                <span className="text-[11px] text-slate-400">닉네임</span>
                 <input
                   type="text"
                   value={nickname}
@@ -125,7 +125,7 @@ export default function ResonanceNicknameSection({
                 />
               </label>
               <label className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-slate-500">비밀번호</span>
+                <span className="text-[11px] text-slate-400">비밀번호</span>
                 <input
                   type="password"
                   value={password}
@@ -173,7 +173,7 @@ export default function ResonanceNicknameSection({
               ) : (
                 <div className="flex flex-wrap gap-2 items-end">
                   <label className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-slate-500">비밀번호 확인</span>
+                    <span className="text-[11px] text-slate-400">비밀번호 확인</span>
                     <input
                       type="password"
                       value={endPassword}

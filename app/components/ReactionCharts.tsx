@@ -86,7 +86,7 @@ function BarBlockWithTooltip({
         {hEung > 0 && <div className="w-full min-h-[1px]" style={{ height: `${hEung}px`, backgroundColor: colorEung }} />}
         {hGam > 0 && <div className="w-full min-h-[1px]" style={{ height: `${hGam}px`, backgroundColor: colorGam }} />}
       </div>
-      <span className="text-[10px] text-slate-500 truncate w-full text-center leading-tight">{label}</span>
+      <span className="text-[11px] text-slate-400 truncate w-full text-center leading-tight">{label}</span>
       {popup && (gam > 0 || eung > 0) && (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1.5 rounded bg-slate-900 border border-slate-600 text-xs text-slate-200 whitespace-nowrap z-20 shadow-xl">
           <div className="font-medium text-slate-400 mb-0.5">{label}</div>
@@ -146,7 +146,7 @@ export default function ReactionCharts() {
   return (
     <div className="space-y-6">
       <h3 className="text-sm font-medium text-slate-400">감·응 선택 결과 시각화</h3>
-      <p className="text-[10px] text-slate-500">막대에 마우스/터치 시 감·응 건수 팝업 (감=긍정, 응=구독)</p>
+      <p className="text-[11px] text-slate-400">막대에 마우스/터치 시 감·응 건수 팝업 (감=긍정, 응=구독)</p>
 
       <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-4 space-y-4">
         <p className="text-xs text-slate-500">시간대별 (0~23시, KST) — 아래 감, 위 응</p>

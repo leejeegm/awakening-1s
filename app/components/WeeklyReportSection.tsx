@@ -122,7 +122,7 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
       </p>
       <div className="flex flex-wrap gap-2 items-end">
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-slate-500">닉네임</span>
+          <span className="text-[11px] text-slate-400">닉네임</span>
           <input
             type="text"
             value={nickname}
@@ -133,7 +133,7 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
           />
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-slate-500">주(일요일)</span>
+          <span className="text-[11px] text-slate-400">주(일요일)</span>
           <input
             type="date"
             value={week}
@@ -143,7 +143,7 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
         </label>
         {isOtherNickname && (
           <label className="flex flex-col gap-0.5">
-            <span className="text-[10px] text-slate-500">비밀번호 (해당 닉네임)</span>
+            <span className="text-[11px] text-slate-400">비밀번호 (해당 닉네임)</span>
             <input
               type="password"
               value={otherPassword}
@@ -188,7 +188,7 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
           </div>
           {data.sentimentSummary && (
             <div>
-              <p className="text-[10px] text-slate-500 mb-0.5 flex items-center gap-2">
+              <p className="text-[11px] text-slate-400 mb-0.5 flex items-center gap-2">
                 <span>AI 감정 요약</span>
                 {data.sentimentSource === "rule" && (
                   <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-400/30">
@@ -201,7 +201,7 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
           )}
           {data.keywordSummary.length > 0 && (
             <div>
-              <p className="text-[10px] text-slate-500 mb-1">키워드 (빈도순)</p>
+              <p className="text-[11px] text-slate-400 mb-1">키워드 (빈도순)</p>
               <p className="text-xs text-slate-400">
                 {data.keywordSummary.map((k) => `${k.keyword}(${k.count})`).join(", ")}
               </p>

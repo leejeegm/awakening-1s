@@ -87,7 +87,7 @@ function AdminExportForm() {
       <p className="text-xs font-medium text-slate-400">데이터 점검용 내보내기 (종류·기간·사용자·형식 선택)</p>
       <div className="flex flex-wrap gap-2 items-end">
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-slate-500">데이터 종류</span>
+          <span className="text-[11px] text-slate-400">데이터 종류</span>
           <select
             value={dataType}
             onChange={(e) => setDataType(e.target.value)}
@@ -100,7 +100,7 @@ function AdminExportForm() {
           </select>
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-slate-500">기간 시작(연월일)</span>
+          <span className="text-[11px] text-slate-400">기간 시작(연월일)</span>
           <input
             type="date"
             value={from}
@@ -109,7 +109,7 @@ function AdminExportForm() {
           />
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-slate-500">기간 끝(연월일)</span>
+          <span className="text-[11px] text-slate-400">기간 끝(연월일)</span>
           <input
             type="date"
             value={to}
@@ -118,7 +118,7 @@ function AdminExportForm() {
           />
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-slate-500">닉네임(선택)</span>
+          <span className="text-[11px] text-slate-400">닉네임(선택)</span>
           <input
             type="text"
             value={nickname}
@@ -128,7 +128,7 @@ function AdminExportForm() {
           />
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-slate-500">형식</span>
+          <span className="text-[11px] text-slate-400">형식</span>
           <select
             value={format}
             onChange={(e) => setFormat(e.target.value as "csv" | "xls")}
@@ -775,7 +775,7 @@ export default function AdminPage() {
                     )}
                     <p className="mt-1 text-sm text-slate-300 break-words">{r.note}</p>
                     {(r.moderation_reason ?? "").trim() !== "" && (
-                      <p className="mt-1 text-[10px] text-slate-500 break-words">
+                      <p className="mt-1 text-[11px] text-slate-400 break-words">
                         사유: {r.moderation_reason}
                       </p>
                     )}
@@ -823,7 +823,7 @@ export default function AdminPage() {
                     {typeof row.meta === "object" &&
                       row.meta !== null &&
                       (row.meta as { source?: string }).source === "rule" && (
-                        <p className="mt-1 text-[10px] text-amber-300">
+                        <p className="mt-1 text-[11px] text-amber-200">
                           일시적 문제로 룰베이스 제공
                         </p>
                       )}
