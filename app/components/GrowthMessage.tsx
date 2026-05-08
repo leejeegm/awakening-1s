@@ -313,7 +313,7 @@ export default function GrowthMessage({
                   <Square className="w-3.5 h-3.5" />
                   중지
                 </button>
-                <span className="hidden sm:inline-flex items-center gap-1 ml-1">
+                <span className="inline-flex items-center gap-1 ml-1">
                   <VolumeX className="w-3.5 h-3.5 text-slate-500" />
                   <input
                     type="range"

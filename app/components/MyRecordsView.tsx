@@ -80,7 +80,7 @@ export default function MyRecordsView({ onNicknameVerified }: Props) {
       }
 
       const feedRes = await fetch(
-        `/api/feed/awakenings?nickname=${encodeURIComponent(n)}`,
+        `/api/feed/awakenings?nickname=${encodeURIComponent(n)}&authHash=${encodeURIComponent(hash)}`,
         { method: "GET" }
       );
       const feedJson = (await feedRes.json().catch(() => ({}))) as { items?: AwakeningRow[] };

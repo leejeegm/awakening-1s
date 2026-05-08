@@ -6,7 +6,9 @@ import { withTimeout } from "@/lib/requestTimeout";
 import type { Database } from "@/types/supabase";
 import { Sparkles } from "lucide-react";
 
-type Row = Database["public"]["Tables"]["awakenings"]["Row"];
+type Row = Omit<Database["public"]["Tables"]["awakenings"]["Row"], "nickname"> & {
+  nickname: string | null;
+};
 type ReactionRow = Database["public"]["Tables"]["reactions"]["Row"];
 
 type Props = { lastRecordNickname?: string };
@@ -117,11 +119,11 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "awakenings" },
         (payload) => {
-          const raw = payload.new as Record<string, unknown>;
+        const raw = payload.new as Record<string, unknown>;
           const item = {
             id: raw.id,
             created_at: raw.created_at,
-            nickname: raw.nickname,
+          nickname: null,
             note: raw.note,
             duration_type: raw.duration_type ?? "1s",
           } as Row;
@@ -180,6 +182,7 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     }
     const fetchMyList = async () => {
       try {
+        // (간이) 내 목록은 우선 공개만 보여주고, "내 자각 실험 결과 보기"에서 비밀번호 확인 후 전체 목록을 봅니다.
         const res = await withTimeout(
           fetch(`/api/feed/awakenings?nickname=${encodeURIComponent(lastRecordNickname.trim())}`),
           12000
@@ -264,7 +267,8 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     options?: { onlyShowMyNickname?: string; hideReactionButtons?: (item: Row) => boolean }
   ) => {
     const myNick = options?.onlyShowMyNickname?.trim() ?? "";
-    const showNickname = (nick: string) => !myNick || nick.trim() === myNick;
+    // 공개 피드에서는 nickname을 null로 내려 익명 유지
+    const showNickname = (nick: string | null) => !!nick && (!myNick || nick.trim() === myNick);
     const hideReactions = options?.hideReactionButtons ?? (() => false);
     return (
       <div className="mb-4">
@@ -283,7 +287,7 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
                   {showNickname(item.nickname) ? (
                     <span className="font-medium text-electric-blue shrink-0">{item.nickname}</span>
                   ) : (
-                    <span className="shrink-0" />
+                    <span className="text-xs text-slate-600 shrink-0">익명</span>
                   )}
                   <time className="text-xs text-slate-500 shrink-0">
                     {new Date(item.created_at).toLocaleString("ko-KR")}
