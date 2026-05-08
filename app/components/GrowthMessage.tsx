@@ -47,6 +47,8 @@ export default function GrowthMessage({
   lastRecordNickname = "",
 }: Props) {
   const prevUsedTodayRef = useRef<number | undefined>(undefined);
+  // 디폴트 무음: 자동 읽기/말하기는 사용자가 켠 뒤에만 동작
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [volume, setVolume] = useState(0.8);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [warmOpen, setWarmOpen] = useState(true);
@@ -61,8 +63,10 @@ export default function GrowthMessage({
   const [pastError, setPastError] = useState<string | null>(null);
 
   const speak = useCallback(
-    (text: string) => {
+    (text: string, opts?: { force?: boolean }) => {
       if (typeof window === "undefined" || !window.speechSynthesis) return;
+      if (!opts?.force && !voiceEnabled) return;
+      if (!opts?.force && volume <= 0) return;
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = "ko-KR";
@@ -72,11 +76,13 @@ export default function GrowthMessage({
       u.onend = u.onerror = () => setIsSpeaking(false);
       window.speechSynthesis.speak(u);
     },
-    [volume]
+    [volume, voiceEnabled]
   );
 
   const speakGrowth = useCallback(() => {
-    speak(GROWTH_TEXT);
+    // 사용자가 눌러서 듣는 경우는 자동으로 음성을 켜고 재생
+    if (!voiceEnabled) setVoiceEnabled(true);
+    speak(GROWTH_TEXT, { force: true });
   }, [speak]);
 
   const stopSpeak = useCallback(() => {
@@ -86,11 +92,15 @@ export default function GrowthMessage({
   }, []);
 
   useEffect(() => {
+    if (!voiceEnabled) {
+      prevUsedTodayRef.current = usedToday;
+      return;
+    }
     if (prevUsedTodayRef.current !== undefined && usedToday > prevUsedTodayRef.current) {
       speakGrowth();
     }
     prevUsedTodayRef.current = usedToday;
-  }, [usedToday, speakGrowth]);
+  }, [usedToday, speakGrowth, voiceEnabled]);
 
   const fetchWarmMessage = useCallback(async () => {
     const nick = (lastRecordNickname || "").trim() || (typeof window !== "undefined" ? localStorage.getItem("lastRecordNickname") ?? "" : "").trim();
@@ -209,7 +219,19 @@ export default function GrowthMessage({
           </button>
           {/* 소리 크기 */}
           <span className="flex items-center gap-1 ml-1">
-            <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+            <button
+              type="button"
+              onClick={() => setVoiceEnabled((v) => !v)}
+              className="p-1 rounded hover:bg-slate-700/60 transition"
+              title={voiceEnabled ? "음성 끄기(무음)" : "음성 켜기"}
+              aria-label={voiceEnabled ? "음성 끄기" : "음성 켜기"}
+            >
+              {voiceEnabled ? (
+                <Volume2 className="w-3.5 h-3.5 text-slate-300" />
+              ) : (
+                <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+              )}
+            </button>
             <input
               type="range"
               min="0"
@@ -217,7 +239,8 @@ export default function GrowthMessage({
               step="0.1"
               value={volume}
               onChange={(e) => setVolume(Number(e.target.value))}
-              className="w-16 h-1.5 accent-blue-500 bg-slate-600 rounded"
+              disabled={!voiceEnabled}
+              className="w-16 h-1.5 accent-blue-500 bg-slate-600 rounded disabled:opacity-40"
               aria-label="음량"
             />
           </span>
@@ -269,13 +292,42 @@ export default function GrowthMessage({
               {warmLoading ? "분석 중…" : "따뜻한 한마디 보기"}
             </button>
             {warmMessage && (
-              <button
-                type="button"
-                onClick={() => speak(warmMessage)}
-                className="px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-slate-200 text-sm font-medium inline-flex items-center gap-1"
-              >
-                <Volume2 className="w-3.5 h-3.5" /> 말하기
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!voiceEnabled) setVoiceEnabled(true);
+                    speak(warmMessage, { force: true });
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-slate-200 text-sm font-medium inline-flex items-center gap-1"
+                >
+                  <Volume2 className="w-3.5 h-3.5" /> 말하기
+                </button>
+                <button
+                  type="button"
+                  onClick={stopSpeak}
+                  className="px-3 py-1.5 rounded-lg bg-slate-700/80 hover:bg-red-500/25 text-slate-300 hover:text-red-300 text-sm font-medium inline-flex items-center gap-1"
+                  title="음성 중지"
+                  aria-label="따뜻한 한마디 음성 중지"
+                >
+                  <Square className="w-3.5 h-3.5" />
+                  중지
+                </button>
+                <span className="hidden sm:inline-flex items-center gap-1 ml-1">
+                  <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={volume}
+                    onChange={(e) => setVolume(Number(e.target.value))}
+                    disabled={!voiceEnabled}
+                    className="w-16 h-1.5 accent-blue-500 bg-slate-600 rounded disabled:opacity-40"
+                    aria-label="따뜻한 한마디 음량"
+                  />
+                </span>
+              </>
             )}
           </div>
           {warmError && <p className="text-xs text-red-400">{warmError}</p>}
@@ -355,13 +407,44 @@ export default function GrowthMessage({
                     <p className="text-slate-200 leading-relaxed break-words">
                       {typeof item.content === "string" ? item.content : JSON.stringify(item.content)}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => speak(typeof item.content === "string" ? item.content : "")}
-                      className="mt-2 text-xs px-2 py-1 rounded bg-slate-600 text-slate-300 hover:bg-slate-500"
-                    >
-                      말하기
-                    </button>
+                    <div className="mt-2 flex flex-wrap gap-2 items-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const text = typeof item.content === "string" ? item.content : "";
+                          if (!voiceEnabled) setVoiceEnabled(true);
+                          speak(text, { force: true });
+                        }}
+                        className="text-xs px-2 py-1 rounded bg-slate-600 text-slate-300 hover:bg-slate-500 inline-flex items-center gap-1"
+                      >
+                        <Volume2 className="w-3.5 h-3.5" />
+                        말하기
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopSpeak}
+                        className="text-xs px-2 py-1 rounded bg-slate-700/80 hover:bg-red-500/25 text-slate-300 hover:text-red-300 inline-flex items-center gap-1"
+                        title="음성 중지"
+                        aria-label="이전 멘트 음성 중지"
+                      >
+                        <Square className="w-3.5 h-3.5" />
+                        중지
+                      </button>
+                      <span className="inline-flex items-center gap-1">
+                        <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.1"
+                          value={volume}
+                          onChange={(e) => setVolume(Number(e.target.value))}
+                          disabled={!voiceEnabled}
+                          className="w-16 h-1.5 accent-blue-500 bg-slate-600 rounded disabled:opacity-40"
+                          aria-label="이전 멘트 음량"
+                        />
+                      </span>
+                    </div>
                   </div>
                 ))}
             </div>
