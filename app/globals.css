@@ -10,7 +10,7 @@
 
 body {
   @apply antialiased bg-slate-950 text-slate-100 min-h-screen;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .text-emphasis {

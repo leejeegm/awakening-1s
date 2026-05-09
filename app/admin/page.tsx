@@ -13,6 +13,7 @@ type RecordRow = {
 type MemberRow = {
   nickname: string;
   password_hint: string | null;
+  entitlements?: { image_cut: boolean; comic_4panel: boolean };
 };
 
 type ProfileRow = {
@@ -31,7 +32,22 @@ type AiContentRow = {
   created_at: string;
 };
 
-type AdminTab = "records" | "members" | "profiles" | "ai_content" | "moderation_quarantine";
+type AdminTab =
+  | "records"
+  | "members"
+  | "profiles"
+  | "ai_content"
+  | "moderation_quarantine"
+  | "entitlements";
+
+type EntitlementRow = {
+  feature_key: "image_cut" | "comic_4panel";
+  enabled: boolean;
+  source: string | null;
+  enabled_by: string | null;
+  expires_at: string | null;
+  updated_at: string;
+};
 
 /** 모더레이션 삭제(보관) 목록(API 응답) */
 type QuarantineRow = {
@@ -175,6 +191,11 @@ export default function AdminPage() {
   const [editingNickname, setEditingNickname] = useState<string | null>(null);
   const [editHint, setEditHint] = useState("");
   const [backupLoading, setBackupLoading] = useState(false);
+  const [entNick, setEntNick] = useState("");
+  const [entLoading, setEntLoading] = useState(false);
+  const [entRows, setEntRows] = useState<EntitlementRow[]>([]);
+  const [entError, setEntError] = useState<string>("");
+  const [entExpiresDate, setEntExpiresDate] = useState<string>("");
 
   const checkAuth = useCallback(async () => {
     try {
@@ -276,6 +297,68 @@ export default function AdminPage() {
     }
   }, []);
 
+  const loadEntitlements = useCallback(async () => {
+    setEntLoading(true);
+    setEntError("");
+    setEntRows([]);
+    try {
+      const n = entNick.trim().toLowerCase();
+      if (!n) {
+        setEntError("닉네임을 입력하세요.");
+        return;
+      }
+      const res = await fetch(`/api/admin/entitlements?nickname=${encodeURIComponent(n)}`);
+      const json = (await res.json().catch(() => ({}))) as { rows?: EntitlementRow[]; error?: string };
+      if (!res.ok) {
+        setEntError(json.error ?? "조회 실패");
+        return;
+      }
+      setEntRows(Array.isArray(json.rows) ? json.rows : []);
+    } catch {
+      setEntError("네트워크 오류");
+    } finally {
+      setEntLoading(false);
+    }
+  }, [entNick]);
+
+  const setEntitlement = useCallback(
+    async (featureKey: EntitlementRow["feature_key"], enabled: boolean) => {
+      setEntLoading(true);
+      setEntError("");
+      try {
+        const n = entNick.trim().toLowerCase();
+        if (!n) {
+          setEntError("닉네임을 입력하세요.");
+          return;
+        }
+        const res = await fetch("/api/admin/entitlements", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nickname: n,
+            feature_key: featureKey,
+            enabled,
+            source: "admin",
+            enabled_by: "admin",
+            // 날짜만 입력하면 KST 23:59:59로 만료 처리
+            expires_at: entExpiresDate ? `${entExpiresDate}T23:59:59+09:00` : null,
+          }),
+        });
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (!res.ok || !json.ok) {
+          setEntError(json.error ?? "저장 실패");
+          return;
+        }
+        await loadEntitlements();
+      } catch {
+        setEntError("네트워크 오류");
+      } finally {
+        setEntLoading(false);
+      }
+    },
+    [entNick, entExpiresDate, loadEntitlements]
+  );
+
   const loadModerationArchive = useCallback(async () => {
     setMqLoading(true);
     try {
@@ -307,6 +390,17 @@ export default function AdminPage() {
   useEffect(() => {
     if (loggedIn === true && tab === "ai_content") loadAiContent();
   }, [loggedIn, tab, loadAiContent]);
+
+  useEffect(() => {
+    if (loggedIn === true && tab === "entitlements") {
+      // 탭 진입 시 기존 입력값이 있으면 자동 조회
+      if (entNick.trim()) loadEntitlements();
+      else {
+        setEntRows([]);
+        setEntError("");
+      }
+    }
+  }, [loggedIn, tab, entNick, loadEntitlements]);
 
   useEffect(() => {
     if (loggedIn === true && tab === "moderation_quarantine") loadModerationArchive();
@@ -529,6 +623,13 @@ export default function AdminPage() {
           >
             삭제 보관함 (폐기)
           </button>
+          <button
+            type="button"
+            onClick={() => setTab("entitlements")}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${tab === "entitlements" ? "bg-electric-blue/80 text-white" : "bg-slate-700 text-slate-400 hover:bg-slate-600"}`}
+          >
+            기능 승인(유료) 토글
+          </button>
         </div>
         {tab === "moderation_quarantine" && (
           <>
@@ -585,6 +686,122 @@ export default function AdminPage() {
           <p className="text-xs text-slate-500 mb-4">
             내 기록 보기용으로 등록된 닉네임·비밀번호 힌트만 표시됩니다. 비밀번호 해시는 보안상 노출하지 않으며, 힌트만 수정할 수 있습니다.
           </p>
+        )}
+        {tab === "entitlements" && (
+          <>
+            <p className="text-xs text-slate-500 mb-3">
+              서버 이미지/웹툰 생성 기능은 비용이 발생하므로, 닉네임별로 관리자 승인(토글)로만 활성화합니다. 무료 사용자는 로컬 생성만 가능합니다.
+            </p>
+            <div className="p-3 rounded-lg bg-slate-800/60 border border-slate-700 space-y-2">
+              <div className="flex flex-wrap gap-2 items-end">
+                <label className="flex flex-col gap-0.5">
+                  <span className="text-[11px] text-slate-400">닉네임</span>
+                  <input
+                    type="text"
+                    value={entNick}
+                    onChange={(e) => setEntNick(e.target.value)}
+                    placeholder="예: leejee5"
+                    className="rounded bg-slate-900 border border-slate-600 text-slate-200 text-sm px-3 py-2 w-48"
+                    maxLength={30}
+                  />
+                </label>
+                <label className="flex flex-col gap-0.5">
+                  <span className="text-[11px] text-slate-400">만료일(선택)</span>
+                  <input
+                    type="date"
+                    value={entExpiresDate}
+                    onChange={(e) => setEntExpiresDate(e.target.value)}
+                    className="rounded bg-slate-900 border border-slate-600 text-slate-200 text-sm px-3 py-2 w-44"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={loadEntitlements}
+                  disabled={entLoading}
+                  className="px-3 py-2 rounded-lg bg-slate-700 text-slate-200 text-sm hover:bg-slate-600 disabled:opacity-50"
+                >
+                  {entLoading ? "조회 중..." : "조회"}
+                </button>
+                {entError && <span className="text-xs text-red-400">{entError}</span>}
+              </div>
+
+              {entNick.trim() && (
+                <div className="pt-2 border-t border-slate-700/60 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-slate-400">image_cut(한 장 컷)</span>
+                    <button
+                      type="button"
+                      disabled={entLoading}
+                      onClick={() => setEntitlement("image_cut", true)}
+                      className="text-xs px-2 py-1 rounded bg-electric-blue/25 text-electric-blue border border-electric-blue/40 hover:bg-electric-blue/35 disabled:opacity-50"
+                    >
+                      승인
+                    </button>
+                    <button
+                      type="button"
+                      disabled={entLoading}
+                      onClick={() => setEntitlement("image_cut", false)}
+                      className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 border border-slate-600 hover:bg-slate-600 disabled:opacity-50"
+                    >
+                      해제
+                    </button>
+                    <span className="text-[11px] text-slate-500">
+                      현재:{" "}
+                      {entRows.find((r) => r.feature_key === "image_cut")?.enabled ? (
+                        <span className="text-emerald-300">ON</span>
+                      ) : (
+                        <span className="text-slate-500">OFF</span>
+                      )}
+                    </span>
+                    {entRows.find((r) => r.feature_key === "image_cut")?.expires_at && (
+                      <span className="text-[11px] text-slate-600">
+                        만료:{" "}
+                        {new Date(entRows.find((r) => r.feature_key === "image_cut")!.expires_at!).toLocaleString("ko-KR")}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-slate-400">comic_4panel(4면 웹툰)</span>
+                    <button
+                      type="button"
+                      disabled={entLoading}
+                      onClick={() => setEntitlement("comic_4panel", true)}
+                      className="text-xs px-2 py-1 rounded bg-deep-violet/20 text-slate-200 border border-deep-violet/40 hover:bg-deep-violet/30 disabled:opacity-50"
+                    >
+                      승인
+                    </button>
+                    <button
+                      type="button"
+                      disabled={entLoading}
+                      onClick={() => setEntitlement("comic_4panel", false)}
+                      className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 border border-slate-600 hover:bg-slate-600 disabled:opacity-50"
+                    >
+                      해제
+                    </button>
+                    <span className="text-[11px] text-slate-500">
+                      현재:{" "}
+                      {entRows.find((r) => r.feature_key === "comic_4panel")?.enabled ? (
+                        <span className="text-emerald-300">ON</span>
+                      ) : (
+                        <span className="text-slate-500">OFF</span>
+                      )}
+                    </span>
+                    {entRows.find((r) => r.feature_key === "comic_4panel")?.expires_at && (
+                      <span className="text-[11px] text-slate-600">
+                        만료:{" "}
+                        {new Date(entRows.find((r) => r.feature_key === "comic_4panel")!.expires_at!).toLocaleString("ko-KR")}
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-slate-600">
+                    승인 후 사용자는 앱에서 “서버(유료·승인)” 모드를 선택해 생성할 수 있습니다.
+                  </p>
+                </div>
+              )}
+            </div>
+          </>
         )}
         {tab === "records" && (loading ? (
           <p className="text-slate-500 py-8">목록 불러오는 중...</p>
@@ -663,7 +880,21 @@ export default function AdminPage() {
                     key={m.nickname}
                     className="p-3 rounded-lg bg-slate-800/60 border border-slate-700"
                   >
-                    <div className="text-sm font-medium text-slate-200">{m.nickname}</div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm font-medium text-slate-200">{m.nickname}</div>
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        {m.entitlements?.image_cut && (
+                          <span className="px-2 py-0.5 rounded-full text-[11px] bg-electric-blue/20 text-electric-blue border border-electric-blue/30">
+                            image_cut ON
+                          </span>
+                        )}
+                        {m.entitlements?.comic_4panel && (
+                          <span className="px-2 py-0.5 rounded-full text-[11px] bg-deep-violet/20 text-slate-200 border border-deep-violet/30">
+                            comic_4panel ON
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     {editingNickname === m.nickname ? (
                       <div className="mt-2 space-y-2">
                         <label className="text-xs text-slate-500">비밀번호 힌트</label>

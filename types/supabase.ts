@@ -151,6 +151,124 @@ export interface Database {
           updated_at?: string;
         };
       };
+      participant_entitlements: {
+        Row: {
+          nickname: string;
+          feature_key: string;
+          enabled: boolean;
+          enabled_by: string | null;
+          source: string | null;
+          expires_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          nickname: string;
+          feature_key: string;
+          enabled?: boolean;
+          enabled_by?: string | null;
+          source?: string | null;
+          expires_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          enabled?: boolean;
+          enabled_by?: string | null;
+          source?: string | null;
+          expires_at?: string | null;
+          updated_at?: string;
+        };
+      };
+      image_generation_usage: {
+        Row: {
+          id: string;
+          created_at: string;
+          nickname: string;
+          feature_key: string;
+          mode: string;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          nickname: string;
+          feature_key: string;
+          mode?: string;
+        };
+        Update: {
+          nickname?: string;
+          feature_key?: string;
+          mode?: string;
+        };
+      };
+      image_generation_locks: {
+        Row: {
+          nickname: string;
+          locked_until: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          nickname: string;
+          locked_until: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          locked_until?: string;
+          updated_at?: string;
+        };
+      };
+      image_generation_assets: {
+        Row: {
+          id: string;
+          created_at: string;
+          nickname: string;
+          feature_key: string;
+          mode: string;
+          prompt: string;
+          negative_prompt: string | null;
+          prompt_hash: string;
+          width: number | null;
+          height: number | null;
+          steps: number | null;
+          storage_bucket: string;
+          storage_path: string;
+          engine: string | null;
+          engine_meta: unknown | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          nickname: string;
+          feature_key: string;
+          mode?: string;
+          prompt: string;
+          negative_prompt?: string | null;
+          prompt_hash: string;
+          width?: number | null;
+          height?: number | null;
+          steps?: number | null;
+          storage_bucket: string;
+          storage_path: string;
+          engine?: string | null;
+          engine_meta?: unknown | null;
+        };
+        Update: {
+          feature_key?: string;
+          mode?: string;
+          prompt?: string;
+          negative_prompt?: string | null;
+          prompt_hash?: string;
+          width?: number | null;
+          height?: number | null;
+          steps?: number | null;
+          storage_bucket?: string;
+          storage_path?: string;
+          engine?: string | null;
+          engine_meta?: unknown | null;
+        };
+      };
       ai_generated_content: {
         Row: {
           id: string;

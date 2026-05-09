@@ -18,5 +18,29 @@ export async function GET() {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ data: data ?? [] });
+
+  const nicknames = (data ?? []).map((r) => String(r.nickname).trim().toLowerCase()).filter(Boolean);
+  const { data: entData } = await admin
+    .from("participant_entitlements")
+    .select("nickname, feature_key, enabled, expires_at")
+    .in("nickname", nicknames as unknown as string[])
+    .in("feature_key", ["image_cut", "comic_4panel"]);
+
+  const now = new Date();
+  const entMap = new Map<string, { image_cut: boolean; comic_4panel: boolean }>();
+  for (const n of nicknames) entMap.set(n, { image_cut: false, comic_4panel: false });
+  for (const row of (entData ?? []) as { nickname: string; feature_key: string; enabled: boolean; expires_at: string | null }[]) {
+    const n = String(row.nickname ?? "").trim().toLowerCase();
+    if (!entMap.has(n)) entMap.set(n, { image_cut: false, comic_4panel: false });
+    const valid = row.enabled && (!row.expires_at || new Date(row.expires_at) > now);
+    if (row.feature_key === "image_cut") entMap.get(n)!.image_cut = valid;
+    if (row.feature_key === "comic_4panel") entMap.get(n)!.comic_4panel = valid;
+  }
+
+  return NextResponse.json({
+    data: (data ?? []).map((m) => ({
+      ...m,
+      entitlements: entMap.get(String(m.nickname).trim().toLowerCase()) ?? { image_cut: false, comic_4panel: false },
+    })),
+  });
 }

@@ -352,6 +352,7 @@ export default function Home() {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-slate-400">자각 기록</h2>
           <MyRecordsView
+            defaultNickname={lastRecordNickname}
             onNicknameVerified={(nick) => {
               setLastRecordNickname(nick);
               try {

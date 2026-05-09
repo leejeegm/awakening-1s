@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import { Volume2, VolumeX, Square, Sparkles } from "lucide-react";
+import ImageComicGeneratorModal from "@/app/components/ImageComicGeneratorModal";
 import {
   PLAN_LABELS,
   PLAN_DAILY_LIMIT,
@@ -61,6 +62,8 @@ export default function GrowthMessage({
   const [pastItems, setPastItems] = useState<{ id: string; content_type: string; content: string; meta: unknown; created_at: string }[]>([]);
   const [pastLoading, setPastLoading] = useState(false);
   const [pastError, setPastError] = useState<string | null>(null);
+  const [genOpen, setGenOpen] = useState(false);
+  const [genBaseText, setGenBaseText] = useState("");
 
   const speak = useCallback(
     (text: string, opts?: { force?: boolean }) => {
@@ -444,6 +447,17 @@ export default function GrowthMessage({
                           aria-label="이전 멘트 음량"
                         />
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGenBaseText(typeof item.content === "string" ? item.content : "");
+                          setGenOpen(true);
+                        }}
+                        className="text-xs px-2 py-1 rounded bg-deep-violet/50 text-slate-200 hover:bg-deep-violet/70"
+                        title="이미지/웹툰 생성"
+                      >
+                        이미지/웹툰
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -451,6 +465,13 @@ export default function GrowthMessage({
           </div>
         </div>
       )}
+
+      <ImageComicGeneratorModal
+        open={genOpen}
+        onClose={() => setGenOpen(false)}
+        nickname={getNickname()}
+        baseText={genBaseText}
+      />
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
         <span>

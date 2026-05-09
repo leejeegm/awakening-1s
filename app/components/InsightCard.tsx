@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Sparkles } from "lucide-react";
+import SpeechControls from "@/app/components/SpeechControls";
 
 type Props = {
   lastRecordNickname?: string;
@@ -59,6 +60,9 @@ export default function InsightCard({ lastRecordNickname = "" }: Props) {
         )}
       </p>
       <p className="text-sm text-slate-200 leading-relaxed">{card}</p>
+      <div className="mt-2">
+        <SpeechControls text={card} speakLabel="말하기" stopLabel="멈춤" />
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { FileText, Download } from "lucide-react";
 import { getThisWeekSundayKST } from "@/lib/weekRange";
+import SpeechControls from "@/app/components/SpeechControls";
 
 type ReportData = {
   week: string;
@@ -197,6 +198,17 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
                 )}
               </p>
               <p className="text-sm text-slate-300 leading-relaxed">{data.sentimentSummary}</p>
+              <div className="mt-2">
+                <SpeechControls
+                  text={`${data.sentimentSummary}${
+                    data.keywordSummary.length > 0
+                      ? `\n\n키워드: ${data.keywordSummary.map((k) => `${k.keyword} ${k.count}회`).join(", ")}`
+                      : ""
+                  }`}
+                  speakLabel="말하기"
+                  stopLabel="멈춤"
+                />
+              </div>
             </div>
           )}
           {data.keywordSummary.length > 0 && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Database } from "@/types/supabase";
 import { Lock, X } from "lucide-react";
@@ -21,9 +21,11 @@ async function sha256Hex(text: string): Promise<string> {
 type Props = {
   /** 내 기록 보기로 조회 성공 시, 이 닉네임을 앱 전체의 '현재 사용자'로 반영해 주별 보고서·이전 멘트 등에 사용 */
   onNicknameVerified?: (nickname: string) => void;
+  /** 현재 로그인(기록 저장) 중인 닉네임이 있으면 모달 입력 기본값으로 노출 */
+  defaultNickname?: string;
 };
 
-export default function MyRecordsView({ onNicknameVerified }: Props) {
+export default function MyRecordsView({ onNicknameVerified, defaultNickname = "" }: Props) {
   const [open, setOpen] = useState(false);
   const [nickname, setNickname] = useState("");
   const [password, setPassword] = useState("");
@@ -32,6 +34,14 @@ export default function MyRecordsView({ onNicknameVerified }: Props) {
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [message, setMessage] = useState("");
   const [records, setRecords] = useState<AwakeningRow[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    const current =
+      (defaultNickname ?? "").trim() ||
+      (typeof window !== "undefined" ? (localStorage.getItem("lastRecordNickname") ?? "").trim() : "");
+    if (current && !nickname.trim()) setNickname(current);
+  }, [open, defaultNickname, nickname]);
 
   const onLookup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +126,7 @@ export default function MyRecordsView({ onNicknameVerified }: Props) {
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-[min(96vw,40rem)] max-h-[90vh] overflow-hidden flex flex-col resize">
             <div className="flex items-center justify-between p-4 border-b border-slate-700">
               <h3 className="text-[12px] font-bold text-slate-100">내 자각 실험 결과 보기(닉네임 비번 설정)</h3>
               <button
