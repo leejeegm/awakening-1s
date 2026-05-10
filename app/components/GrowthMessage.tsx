@@ -58,6 +58,7 @@ export default function GrowthMessage({
   const [warmOpen, setWarmOpen] = useState(true);
   const [warmDuration, setWarmDuration] = useState<"1s" | "10s" | "100s">("1s");
   const [warmMessage, setWarmMessage] = useState<string | null>(null);
+  const [warmSource, setWarmSource] = useState<"openai" | "gemini" | "rule" | null>(null);
   const [warmLoading, setWarmLoading] = useState(false);
   const [warmError, setWarmError] = useState<string | null>(null);
   const [warmWarning, setWarmWarning] = useState<string | null>(null);
@@ -119,15 +120,23 @@ export default function GrowthMessage({
     setWarmError(null);
     setWarmWarning(null);
     setWarmMessage(null);
+    setWarmSource(null);
     try {
       const res = await fetch(
         `/api/ai/warm-message?nickname=${encodeURIComponent(nick)}&durationType=${warmDuration}`
       );
-      const data = (await res.json()) as { message?: string; error?: string; warning?: string; source?: string };
+      const data = (await res.json()) as {
+        message?: string;
+        error?: string;
+        warning?: string;
+        source?: "openai" | "gemini" | "rule";
+      };
       if (!res.ok) {
         setWarmError(data.error ?? "요청 실패");
         return;
       }
+      const src = data.source;
+      setWarmSource(src === "openai" || src === "gemini" || src === "rule" ? src : null);
       setWarmWarning(
         data.source === "rule"
           ? (data.warning ?? "일시적 문제로 룰베이스 메시지로 제공 중입니다.")
@@ -276,6 +285,7 @@ export default function GrowthMessage({
                 onClick={() => {
                   setWarmDuration(opt.value);
                   setWarmMessage(null);
+                  setWarmSource(null);
                   setWarmError(null);
                 }}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
@@ -339,8 +349,20 @@ export default function GrowthMessage({
           {warmError && <p className="text-xs text-red-400">{warmError}</p>}
           {warmWarning && <p className="text-xs text-amber-300">{warmWarning}</p>}
           {warmMessage && (
-            <div className="p-3 rounded-lg bg-slate-800/80 border border-slate-600 text-sm text-slate-200 leading-relaxed">
-              {warmMessage}
+            <div className="p-3 rounded-lg bg-slate-800/80 border border-slate-600 text-sm text-slate-200 leading-relaxed space-y-2">
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                {warmSource === "openai" && (
+                  <span className="px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-200 border border-violet-400/30">
+                    GPT-4o 정밀
+                  </span>
+                )}
+                {warmSource === "gemini" && (
+                  <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-200 border border-sky-400/25">
+                    Gemini 요약 (1차)
+                  </span>
+                )}
+              </div>
+              <div className="leading-relaxed">{warmMessage}</div>
             </div>
           )}
           <button

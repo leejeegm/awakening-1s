@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildRuleBasedWarmMessage } from "@/lib/ruleBasedAi";
+import { geminiGenerateText } from "@/lib/gemini";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
@@ -96,25 +97,45 @@ export async function GET(request: NextRequest) {
     });
 
   try {
-    if (!OPENAI_API_KEY) {
-      const message = ruleBased();
+    // 1차: Gemini(없으면 rule)
+    const geminiPrompt =
+      "당신은 사용자의 짧은 자각 기록을 읽고, 성장에 도움이 되는 따뜻한 한마디를 한국어로 1~2문장으로 작성하는 도우미입니다. " +
+      "과장/단정/진단(의학적 판단) 없이 공감과 실행 가능한 한 가지 제안을 담으세요.\n\n" +
+      prompt;
+    const g1 = await geminiGenerateText({ prompt: geminiPrompt, maxOutputTokens: 220 });
+
+    // 2차(정밀): '결정적 찰나(1.00초)'에만 고성능 모델 호출
+    const shouldUseHighPrecision = validDuration === "1s";
+
+    if (!OPENAI_API_KEY || !shouldUseHighPrecision) {
+      const message = g1.ok ? g1.text : ruleBased();
       try {
         await admin.from("ai_generated_content").insert({
           nickname,
           content_type: "warm_message",
           content: message,
-          meta: { durationType: validDuration, source: "rule", reason: "missing_openai_key" },
+          meta: g1.ok
+            ? { durationType: validDuration, source: "gemini", model: g1.model }
+            : {
+                durationType: validDuration,
+                source: "rule",
+                reason: !OPENAI_API_KEY ? "missing_openai_key" : "gemini_unavailable",
+                geminiError: !g1.ok ? g1.error : null,
+                geminiStatus: !g1.ok ? g1.status ?? null : null,
+              },
         } as never);
       } catch {
         // 저장 실패해도 생성된 메시지는 반환
       }
       return NextResponse.json({
         message,
-        source: "rule",
-        warning: "일시적 문제로 룰베이스 메시지로 제공 중입니다.",
+        source: g1.ok ? "gemini" : "rule",
+        ...(g1.ok ? {} : { warning: "일시적 문제로 룰베이스 메시지로 제공 중입니다." }),
       });
     }
 
+    // OpenAI 정밀 단계: Gemini 출력(또는 원문) 기반으로 더 매끄럽게 정리
+    const refineSeed = g1.ok ? g1.text : "";
     const res = await fetch(OPENAI_URL, {
       method: "POST",
       headers: {
@@ -129,7 +150,14 @@ export async function GET(request: NextRequest) {
             content:
               "당신은 사용자의 자각 기록을 읽고 성장을 위한 따뜻한 한마디를 짧게 전하는 도우미입니다. 한국어로 1~2문장 이내로 작성하세요.",
           },
-          { role: "user", content: prompt },
+          {
+            role: "user",
+            content:
+              `${prompt}\n\n` +
+              (refineSeed
+                ? `참고로 Gemini가 1차로 만든 문장이 있습니다. 이를 더 자연스럽고 공감되게 다듬어 주세요(1~2문장 유지).\nGemini 초안:\n${refineSeed}`
+                : "1~2문장으로 공감+격려+실행 가능한 작은 제안 1가지를 포함해 작성해 주세요."),
+          },
         ],
         max_tokens: 200,
       }),
@@ -137,7 +165,7 @@ export async function GET(request: NextRequest) {
 
     if (!res.ok) {
       const err = await res.text().catch(() => "");
-      const message = ruleBased();
+      const message = g1.ok ? g1.text : ruleBased();
       try {
         await admin.from("ai_generated_content").insert({
           nickname,
@@ -145,9 +173,12 @@ export async function GET(request: NextRequest) {
           content: message,
           meta: {
             durationType: validDuration,
-            source: "rule",
+            source: g1.ok ? "gemini" : "rule",
             openaiStatus: res.status,
             openaiError: err?.slice(0, 2000) || null,
+            geminiModel: g1.ok ? g1.model : null,
+            geminiError: !g1.ok ? g1.error : null,
+            geminiStatus: !g1.ok ? g1.status ?? null : null,
           },
         } as never);
       } catch {
@@ -155,8 +186,8 @@ export async function GET(request: NextRequest) {
       }
       return NextResponse.json({
         message,
-        source: "rule",
-        warning: "일시적 문제로 룰베이스 메시지로 제공 중입니다.",
+        source: g1.ok ? "gemini" : "rule",
+        warning: "정밀 진단 모델 호출에 실패하여 1차 결과로 제공 중입니다.",
       });
     }
 
@@ -170,14 +201,21 @@ export async function GET(request: NextRequest) {
         nickname,
         content_type: "warm_message",
         content: message,
-        meta: { durationType: validDuration, source: "openai", model: "gpt-4o" },
+        meta: {
+          durationType: validDuration,
+          source: "openai",
+          model: "gpt-4o",
+          upstream: g1.ok ? { source: "gemini", model: g1.model } : { source: "rule" },
+        },
       } as never);
     } catch {
       // 저장 실패해도 생성된 메시지는 반환
     }
     return NextResponse.json({ message, source: "openai" });
   } catch (e) {
-    const message = ruleBased();
+    // 예외 시: Gemini가 성공했으면 Gemini, 아니면 rule
+    const g1 = await geminiGenerateText({ prompt: "한국어로 1~2문장 따뜻한 한마디를 작성해 주세요.\n\n" + prompt, maxOutputTokens: 220 });
+    const message = g1.ok ? g1.text : ruleBased();
     try {
       await admin.from("ai_generated_content").insert({
         nickname,
@@ -185,8 +223,11 @@ export async function GET(request: NextRequest) {
         content: message,
         meta: {
           durationType: validDuration,
-          source: "rule",
+          source: g1.ok ? "gemini" : "rule",
           openaiException: String(e).slice(0, 2000),
+          geminiModel: g1.ok ? g1.model : null,
+          geminiError: !g1.ok ? g1.error : null,
+          geminiStatus: !g1.ok ? g1.status ?? null : null,
         },
       } as never);
     } catch {
@@ -194,7 +235,7 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json({
       message,
-      source: "rule",
+      source: g1.ok ? "gemini" : "rule",
       warning: "일시적 문제로 룰베이스 메시지로 제공 중입니다.",
     });
   }

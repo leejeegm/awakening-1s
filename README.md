@@ -209,7 +209,9 @@ git push -u origin main
 
 | Name | Value |
 |------|--------|
-| `OPENAI_API_KEY` | OpenAI API 키 |
+| `GEMINI_API_KEY` 또는 `GEMINI_JAKKAE_API_KEY` | Google Gemini 키 (**1차 필터·요약**). 없으면 해당 구간은 룰베이스로 대체합니다. |
+| `GEMINI_MODEL` | (선택) 예: `gemini-1.5-flash`. 미설정 시 기본 플래시 모델을 사용합니다. |
+| `OPENAI_API_KEY` | OpenAI 키 (**정밀 진단**용). `1.00초(1s)` 컨텍스트가 있을 때만 GPT-4o를 추가 호출합니다. |
 
 ---
 
@@ -274,7 +276,12 @@ git push origin main
 
 ## AI 감응 인사이트 (선택)
 
-기록 데이터 기반 키워드 분석·감응 트렌드·맞춤 카드 뉴스(긍정·창의·혁신·개방)를 표시하려면 `.env.local`에 `OPENAI_API_KEY`(OpenAI API 키)를 넣으세요. GPT-4o로 요약합니다. 미설정 시 해당 섹션은 표시되지 않습니다.
+기록 데이터 기반 **따뜻한 한마디·맞춤 감응 카드·주간 감정 요약** 등은 **먼저 Gemini로 1차 요약**합니다.  
+표본(또는 해당 주) 안에 **결정적 찰나(`1s`) 기록이 포함**되어 있고 `OPENAI_API_KEY`가 있으면, 그때만 **GPT-4o로 정밀 보강**합니다.  
+Gemini 키가 없거나 실패하면 **룰베이스 문구**로 대체됩니다.
+
+**공개 기록 검수:** 먼저 룰 기반 차단 후 **Gemini로 1차 분류**합니다. 텍스트 파싱 실패 시 OpenAI로 재시도합니다.  
+Gemini가 **`warn`(애매함)** 이면 **`1s` 찰나로 공개 저장한 경우에만** GPT-4o로 재판정합니다.
 
 ## 주별 1페이지 보고서 (AI 감정 요약)
 

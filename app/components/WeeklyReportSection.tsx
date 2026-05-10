@@ -12,7 +12,7 @@ type ReportData = {
   recordCount: number;
   records: { id: string; created_at: string; note: string }[];
   sentimentSummary: string;
-  sentimentSource?: "openai" | "rule";
+  sentimentSource?: "openai" | "gemini" | "rule";
   keywordSummary: { keyword: string; count: number }[];
   canDownload: boolean;
 };
@@ -194,6 +194,11 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
                 {data.sentimentSource === "rule" && (
                   <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-400/30">
                     일시적 문제로 룰베이스 제공
+                  </span>
+                )}
+                {data.sentimentSource === "gemini" && (
+                  <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-200 border border-sky-400/25">
+                    Gemini 요약 (1차)
                   </span>
                 )}
               </p>

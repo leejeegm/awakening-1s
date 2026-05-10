@@ -12,7 +12,7 @@ export default function InsightCard({ lastRecordNickname = "" }: Props) {
   const [card, setCard] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
-  const [source, setSource] = useState<"openai" | "rule" | null>(null);
+  const [source, setSource] = useState<"openai" | "gemini" | "rule" | null>(null);
 
   useEffect(() => {
     setCard(null);
@@ -27,7 +27,9 @@ export default function InsightCard({ lastRecordNickname = "" }: Props) {
       .then((data) => {
         if (data.card) {
           setCard(data.card);
-          setSource(data.source === "rule" ? "rule" : "openai");
+          setSource(
+            data.source === "rule" ? "rule" : data.source === "gemini" ? "gemini" : "openai"
+          );
         }
         else setError(true);
       })
@@ -56,6 +58,11 @@ export default function InsightCard({ lastRecordNickname = "" }: Props) {
         {source === "rule" && (
           <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-400/30">
             일시적 문제로 룰베이스 제공
+          </span>
+        )}
+        {source === "gemini" && (
+          <span className="ml-1 px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-200 border border-sky-400/25">
+            Gemini 요약 (1차)
           </span>
         )}
       </p>
