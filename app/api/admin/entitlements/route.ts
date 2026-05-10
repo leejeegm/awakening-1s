@@ -3,6 +3,7 @@ import { verifyAdminCookie } from "@/lib/adminAuth";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { FeatureKey } from "@/lib/entitlements";
 import { normalizeNickname } from "@/lib/entitlements";
+import { hintFromPgError } from "@/lib/pgErrorHints";
 
 const FEATURES: FeatureKey[] = ["image_cut", "comic_4panel"];
 
@@ -22,7 +23,10 @@ export async function GET(request: NextRequest) {
     .select("feature_key, enabled, source, enabled_by, expires_at, updated_at")
     .eq("nickname", nickname)
     .in("feature_key", FEATURES as unknown as string[]);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    const hint = hintFromPgError(error.message, error.code);
+    return NextResponse.json({ error: error.message, ...(hint ? { hint } : {}) }, { status: 500 });
+  }
   return NextResponse.json({ nickname, rows: data ?? [] });
 }
 
@@ -70,7 +74,10 @@ export async function POST(request: NextRequest) {
     } as never,
     { onConflict: "nickname,feature_key" }
   );
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    const hint = hintFromPgError(error.message, error.code);
+    return NextResponse.json({ error: error.message, ...(hint ? { hint } : {}) }, { status: 500 });
+  }
 
   // 감사 로그(승인/해제) 저장 (실패해도 본 작업은 성공 처리)
   try {

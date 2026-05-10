@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 
 type Mode = "local" | "server";
@@ -10,6 +10,8 @@ type Props = {
   open: boolean;
   onClose: () => void;
   nickname: string;
+  /** 「내 자각 실험 결과 보기」조회 후 받은 비밀번호 SHA-256 hex */
+  authHash?: string;
   baseText: string;
 };
 
@@ -49,7 +51,7 @@ async function splitToFourPanels(dataUrl: string) {
   return panels;
 }
 
-export default function ImageComicGeneratorModal({ open, onClose, nickname, baseText }: Props) {
+export default function ImageComicGeneratorModal({ open, onClose, nickname, authHash = "", baseText }: Props) {
   const [mode, setMode] = useState<Mode>("local");
   const [feature, setFeature] = useState<Feature>("image_cut");
   const [prompt, setPrompt] = useState("");
@@ -68,8 +70,10 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, base
     { id: string; created_at: string; feature_key: Feature; url: string | null }[]
   >([]);
   const [cacheHit, setCacheHit] = useState(false);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
 
-  const normalizedNickname = useMemo(() => (nickname ?? "").trim().toLowerCase(), [nickname]);
+  /** participant_keys 닉네임과 동일 대소문자 유지 (인증용) */
+  const apiNickname = useMemo(() => (nickname ?? "").trim().slice(0, 20), [nickname]);
 
   useEffect(() => {
     if (!open) return;
@@ -93,18 +97,19 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, base
     setUsage(null);
     setHistory([]);
     setCacheHit(false);
+    setStorageWarning(null);
   }, [open, baseText]);
 
-  const loadHistory = async () => {
-    if (!normalizedNickname) return;
+  const loadHistory = useCallback(async () => {
+    if (!apiNickname || !authHash.trim()) return;
     const res = await fetch(
-      `/api/ai/image/history?nickname=${encodeURIComponent(normalizedNickname)}&limit=10`
+      `/api/ai/image/history?nickname=${encodeURIComponent(apiNickname)}&authHash=${encodeURIComponent(authHash.trim())}&limit=10`
     );
     const json = (await res.json().catch(() => ({}))) as {
       items?: { id: string; created_at: string; feature_key: Feature; url: string | null }[];
     };
     setHistory(Array.isArray(json.items) ? json.items : []);
-  };
+  }, [apiNickname, authHash]);
 
   useEffect(() => {
     try {
@@ -113,13 +118,13 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, base
     } catch {}
   }, [mode, feature]);
 
-  const checkServerEntitlement = async () => {
-    const res = await fetch(`/api/entitlements?nickname=${encodeURIComponent(normalizedNickname)}`);
-    const json = (await res.json().catch(() => ({}))) as { features?: Record<string, boolean> };
-    return !!json.features?.[feature];
-  };
+  useEffect(() => {
+    if (open && mode === "server" && authHash.trim() && apiNickname) {
+      void loadHistory();
+    }
+  }, [open, mode, authHash, apiNickname, loadHistory]);
 
-  const generateLocal = async () => {
+  const generateLocal = async (): Promise<{ url: string; warn?: string }> => {
     // Local open-source engine: Stable Diffusion WebUI (AUTOMATIC1111) default API
     const url = "http://127.0.0.1:7860/sdapi/v1/txt2img";
     const payload = {
@@ -141,19 +146,32 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, base
     if (!res.ok) throw new Error("로컬 엔진 호출 실패(웹UI 실행/설정/CORS를 확인하세요).");
     const b64 = Array.isArray(json.images) ? json.images[0] : null;
     if (!b64) throw new Error("로컬 엔진 결과가 없습니다.");
-    return dataUrlFromBase64(b64);
+    return { url: dataUrlFromBase64(b64) };
   };
 
-  const generateServer = async () => {
-    const ok = await checkServerEntitlement();
-    if (!ok) {
-      throw new Error("서버 생성은 유료/관리자 승인 후 사용 가능합니다.");
+  const generateServer = async (): Promise<{ url: string; warn?: string }> => {
+    if (!authHash.trim()) {
+      throw new Error("먼저 「내 자각 실험 결과 보기」에서 닉네임·비밀번호로 조회해 주세요.");
+    }
+    const entRes = await fetch(
+      `/api/entitlements?nickname=${encodeURIComponent(apiNickname)}&authHash=${encodeURIComponent(authHash.trim())}`
+    );
+    const entJson = (await entRes.json().catch(() => ({}))) as {
+      features?: Record<string, boolean>;
+      error?: string;
+    };
+    if (entRes.status === 401) {
+      throw new Error(entJson.error ?? "먼저 「내 자각 실험 결과 보기」에서 조회해 주세요.");
+    }
+    if (!entJson.features?.[feature]) {
+      throw new Error("서버 생성은 관리자 승인 후 사용 가능합니다.");
     }
     const res = await fetch("/api/ai/image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        nickname: normalizedNickname,
+        nickname: apiNickname,
+        authHash: authHash.trim(),
         featureKey: feature,
         prompt,
         negativePrompt,
@@ -162,20 +180,38 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, base
     const json = (await res.json().catch(() => ({}))) as {
       imageBase64?: string;
       error?: string;
+      requiresAuth?: boolean;
       usage?: { usedToday: number; dailyLimit: number; usedMonth: number; monthlyLimit: number };
       cached?: boolean;
       url?: string | null;
       storage?: { bucket: string; path: string };
+      storageWarning?: string;
       usedToday?: number;
       dailyLimit?: number;
       usedMonth?: number;
       monthlyLimit?: number;
     };
+    if (res.status === 401) {
+      throw new Error(
+        json.requiresAuth
+          ? "세션이 만료되었을 수 있습니다. 「내 자각 실험 결과 보기」에서 다시 조회해 주세요."
+          : (json.error ?? "인증 실패")
+      );
+    }
+    if (res.status === 402) {
+      throw new Error(json.error ?? "관리자 승인 후 서버 생성을 사용할 수 있습니다.");
+    }
+    if (res.status === 429) {
+      throw new Error(json.error ?? "서버 생성 한도에 도달했습니다.");
+    }
+    if (res.status === 409) {
+      throw new Error(json.error ?? "이미 생성 중입니다. 잠시 후 다시 시도해 주세요.");
+    }
     if (!res.ok) throw new Error(json.error ?? "서버 생성 실패");
     if (json.cached && (json.url || (json.storage?.bucket && json.storage?.path))) {
       setCacheHit(true);
       await loadHistory();
-      if (json.url) return json.url;
+      if (json.url) return { url: json.url };
       throw new Error("동일 요청 캐시는 있으나 링크 생성에 실패했습니다. 아래 최근 생성에서 확인해 주세요.");
     }
     if (!json.imageBase64) throw new Error("서버 생성 결과가 없습니다.");
@@ -195,7 +231,10 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, base
       });
     }
     await loadHistory();
-    return dataUrlFromBase64(json.imageBase64);
+    return {
+      url: dataUrlFromBase64(json.imageBase64),
+      warn: json.storageWarning,
+    };
   };
 
   const onGenerate = async () => {
@@ -203,11 +242,14 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, base
     setError(null);
     setImageUrl(null);
     setPanels(null);
+    setStorageWarning(null);
     try {
-      const url = mode === "local" ? await generateLocal() : await generateServer();
-      setImageUrl(url);
+      const out =
+        mode === "local" ? await generateLocal() : await generateServer();
+      setImageUrl(out.url);
+      if ("warn" in out && out.warn) setStorageWarning(out.warn);
       if (feature === "comic_4panel") {
-        const p = await splitToFourPanels(url);
+        const p = await splitToFourPanels(out.url);
         setPanels(p);
       }
     } catch (e) {
@@ -262,6 +304,11 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, base
               로컬은 내 PC에서 SD WebUI(예: `http://127.0.0.1:7860`)가 켜져 있어야 합니다.
             </span>
           </div>
+          {mode === "server" && !authHash.trim() && (
+            <p className="text-[11px] text-amber-300">
+              서버 생성·히스토리는 보안을 위해 「내 자각 실험 결과 보기」에서 닉네임·비밀번호 조회에 성공한 뒤에만 사용할 수 있습니다.
+            </p>
+          )}
 
           <div className="flex flex-wrap gap-2 items-center">
             <span className="text-xs text-slate-500">형태</span>
@@ -326,6 +373,9 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, base
             <p className="text-[11px] text-slate-500">
               서버 사용량: 오늘 {usage.usedToday}/{usage.dailyLimit}, 이번 달 {usage.usedMonth}/{usage.monthlyLimit}
             </p>
+          )}
+          {storageWarning && mode === "server" && (
+            <p className="text-[11px] text-amber-300 break-words">{storageWarning}</p>
           )}
 
           {imageUrl && (

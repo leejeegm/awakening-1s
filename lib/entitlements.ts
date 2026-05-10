@@ -1,4 +1,10 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import type { Database } from "@/types/supabase";
+
+type ParticipantEntitlementGateRow = Pick<
+  Database["public"]["Tables"]["participant_entitlements"]["Row"],
+  "enabled" | "expires_at"
+>;
 
 export type FeatureKey = "image_cut" | "comic_4panel";
 
@@ -20,8 +26,9 @@ export async function isFeatureEnabledForNickname(nickname: string, featureKey: 
     .maybeSingle();
 
   if (error) return { ok: false, reason: "db_error" as const };
-  if (!data?.enabled) return { ok: false, reason: "not_enabled" as const };
-  if (data.expires_at && new Date(data.expires_at) <= new Date()) {
+  const row = data as ParticipantEntitlementGateRow | null;
+  if (!row?.enabled) return { ok: false, reason: "not_enabled" as const };
+  if (row.expires_at && new Date(row.expires_at) <= new Date()) {
     return { ok: false, reason: "expired" as const };
   }
   return { ok: true as const };

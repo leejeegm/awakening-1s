@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { hintFromPgError } from "@/lib/pgErrorHints";
 
 type LimitResult =
   | { allowed: true; usedToday: number; dailyLimit: number; usedMonth: number; monthlyLimit: number }
@@ -93,6 +94,19 @@ export async function checkAndRecordServerImageUsage(opts: {
     .eq("nickname", nickname)
     .gte("created_at", monthStart);
 
+  const countErr = todayRes.error ?? monthRes.error;
+  if (countErr) {
+    const hint = hintFromPgError(countErr.message, countErr.code);
+    return {
+      allowed: false,
+      message: hint ?? `사용량 조회에 실패했습니다. (${countErr.message})`,
+      usedToday: 0,
+      dailyLimit,
+      usedMonth: 0,
+      monthlyLimit,
+    };
+  }
+
   const usedToday = todayRes.count ?? 0;
   const usedMonth = monthRes.count ?? 0;
 
@@ -124,9 +138,10 @@ export async function checkAndRecordServerImageUsage(opts: {
   } as never);
 
   if (error) {
+    const hint = hintFromPgError(error.message, error.code);
     return {
       allowed: false,
-      message: "사용량 기록에 실패했습니다.",
+      message: hint ?? `사용량 기록에 실패했습니다. (${error.message})`,
       usedToday,
       dailyLimit,
       usedMonth,

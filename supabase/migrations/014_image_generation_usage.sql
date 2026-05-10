@@ -13,6 +13,7 @@ create index if not exists idx_image_generation_usage_nickname_created_at
 alter table public.image_generation_usage enable row level security;
 
 -- 서비스 역할만 삽입/조회 가능 (anon 불가)
+drop policy if exists "Service role only" on public.image_generation_usage;
 create policy "Service role only"
   on public.image_generation_usage for all
   using (false)

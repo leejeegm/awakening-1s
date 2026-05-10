@@ -38,7 +38,42 @@ type AdminTab =
   | "profiles"
   | "ai_content"
   | "moderation_quarantine"
-  | "entitlements";
+  | "entitlements"
+  | "image_audit";
+
+type EntitlementActionRow = {
+  id: string;
+  created_at: string;
+  nickname: string;
+  feature_key: string;
+  enabled: boolean;
+  expires_at: string | null;
+  source: string | null;
+  enabled_by: string | null;
+};
+
+type ImageUsageRow = {
+  id: string;
+  created_at: string;
+  nickname: string;
+  feature_key: string;
+  mode: string;
+};
+
+type ImageAssetAuditRow = {
+  id: string;
+  created_at: string;
+  nickname: string;
+  feature_key: string;
+  mode: string;
+  prompt_preview: string;
+  prompt_hash: string;
+  width: number | null;
+  height: number | null;
+  storage_bucket: string;
+  storage_path: string;
+  preview_url: string | null;
+};
 
 type EntitlementRow = {
   feature_key: "image_cut" | "comic_4panel";
@@ -196,6 +231,12 @@ export default function AdminPage() {
   const [entRows, setEntRows] = useState<EntitlementRow[]>([]);
   const [entError, setEntError] = useState<string>("");
   const [entExpiresDate, setEntExpiresDate] = useState<string>("");
+  const [auditNick, setAuditNick] = useState("");
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState("");
+  const [entitlementActions, setEntitlementActions] = useState<EntitlementActionRow[]>([]);
+  const [imageUsageRows, setImageUsageRows] = useState<ImageUsageRow[]>([]);
+  const [imageAssetRows, setImageAssetRows] = useState<ImageAssetAuditRow[]>([]);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -235,7 +276,45 @@ export default function AdminPage() {
     setMembers([]);
     setProfiles([]);
     setAiContent([]);
+    setEntitlementActions([]);
+    setImageUsageRows([]);
+    setImageAssetRows([]);
+    setAuditError("");
   };
+
+  const loadImageAudit = useCallback(async () => {
+    setAuditLoading(true);
+    setAuditError("");
+    try {
+      const params = new URLSearchParams({ limit: "50" });
+      const n = auditNick.trim().toLowerCase();
+      if (n) params.set("nickname", n);
+      const res = await fetch(`/api/admin/image-audit?${params.toString()}`);
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        entitlement_actions?: EntitlementActionRow[];
+        image_usage?: ImageUsageRow[];
+        image_assets?: ImageAssetAuditRow[];
+      };
+      if (!res.ok) {
+        setAuditError(json.error ?? "조회 실패");
+        setEntitlementActions([]);
+        setImageUsageRows([]);
+        setImageAssetRows([]);
+        return;
+      }
+      setEntitlementActions(Array.isArray(json.entitlement_actions) ? json.entitlement_actions : []);
+      setImageUsageRows(Array.isArray(json.image_usage) ? json.image_usage : []);
+      setImageAssetRows(Array.isArray(json.image_assets) ? json.image_assets : []);
+    } catch {
+      setAuditError("네트워크 오류");
+      setEntitlementActions([]);
+      setImageUsageRows([]);
+      setImageAssetRows([]);
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [auditNick]);
 
   const loadMembers = useCallback(async () => {
     setLoading(true);
@@ -308,9 +387,14 @@ export default function AdminPage() {
         return;
       }
       const res = await fetch(`/api/admin/entitlements?nickname=${encodeURIComponent(n)}`);
-      const json = (await res.json().catch(() => ({}))) as { rows?: EntitlementRow[]; error?: string };
+      const json = (await res.json().catch(() => ({}))) as {
+        rows?: EntitlementRow[];
+        error?: string;
+        hint?: string;
+      };
       if (!res.ok) {
-        setEntError(json.error ?? "조회 실패");
+        const msg = [json.error ?? "조회 실패", json.hint].filter(Boolean).join("\n");
+        setEntError(msg);
         return;
       }
       setEntRows(Array.isArray(json.rows) ? json.rows : []);
@@ -344,9 +428,10 @@ export default function AdminPage() {
             expires_at: entExpiresDate ? `${entExpiresDate}T23:59:59+09:00` : null,
           }),
         });
-        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; hint?: string };
         if (!res.ok || !json.ok) {
-          setEntError(json.error ?? "저장 실패");
+          const msg = [json.error ?? "저장 실패", json.hint].filter(Boolean).join("\n");
+          setEntError(msg);
           return;
         }
         await loadEntitlements();
@@ -405,6 +490,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (loggedIn === true && tab === "moderation_quarantine") loadModerationArchive();
   }, [loggedIn, tab, loadModerationArchive]);
+
+  useEffect(() => {
+    if (loggedIn === true && tab === "image_audit") loadImageAudit();
+  }, [loggedIn, tab, loadImageAudit]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("이 기록을 삭제하시겠습니까?")) return;
@@ -576,7 +665,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 p-4 pb-8">
-      <div className="max-w-2xl mx-auto">
+      <div className={`mx-auto ${tab === "image_audit" ? "max-w-4xl" : "max-w-2xl"}`}>
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-lg font-bold">관리자</h1>
           <button
@@ -629,6 +718,13 @@ export default function AdminPage() {
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${tab === "entitlements" ? "bg-electric-blue/80 text-white" : "bg-slate-700 text-slate-400 hover:bg-slate-600"}`}
           >
             기능 승인(유료) 토글
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("image_audit")}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${tab === "image_audit" ? "bg-electric-blue/80 text-white" : "bg-slate-700 text-slate-400 hover:bg-slate-600"}`}
+          >
+            이미지·승인 로그
           </button>
         </div>
         {tab === "moderation_quarantine" && (
@@ -800,6 +896,128 @@ export default function AdminPage() {
                   </p>
                 </div>
               )}
+            </div>
+          </>
+        )}
+        {tab === "image_audit" && (
+          <>
+            <p className="text-xs text-slate-500 mb-3">
+              기능 승인 변경 내역(admin_entitlement_actions), 서버 이미지 쿼터 집계용 사용 기록(image_generation_usage),
+              저장된 생성 결과 메타(image_generation_assets)를 확인합니다. 닉네임을 비우면 전체(최근 50건)입니다.
+            </p>
+            <div className="flex flex-wrap gap-2 items-end mb-4">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[11px] text-slate-400">닉네임 필터(선택)</span>
+                <input
+                  type="text"
+                  value={auditNick}
+                  onChange={(e) => setAuditNick(e.target.value)}
+                  placeholder="전체"
+                  className="rounded bg-slate-900 border border-slate-600 text-slate-200 text-sm px-3 py-2 w-40"
+                  maxLength={30}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={loadImageAudit}
+                disabled={auditLoading}
+                className="px-3 py-2 rounded-lg bg-slate-700 text-slate-200 text-sm hover:bg-slate-600 disabled:opacity-50"
+              >
+                {auditLoading ? "불러오는 중..." : "새로고침"}
+              </button>
+              {auditError && <span className="text-xs text-red-400">{auditError}</span>}
+            </div>
+
+            <div className="space-y-6">
+              <section>
+                <h2 className="text-sm font-medium text-slate-400 mb-2">승인 변경 로그</h2>
+                {auditLoading && entitlementActions.length === 0 ? (
+                  <p className="text-slate-500 text-xs">불러오는 중...</p>
+                ) : entitlementActions.length === 0 ? (
+                  <p className="text-slate-600 text-xs">내역 없음</p>
+                ) : (
+                  <ul className="space-y-2 max-h-56 overflow-y-auto text-xs">
+                    {entitlementActions.map((row) => (
+                      <li
+                        key={row.id}
+                        className="p-2 rounded-lg bg-slate-800/60 border border-slate-700 flex flex-wrap gap-x-3 gap-y-1"
+                      >
+                        <time className="text-slate-500 shrink-0">
+                          {new Date(row.created_at).toLocaleString("ko-KR")}
+                        </time>
+                        <span className="text-slate-300 font-medium">{row.nickname}</span>
+                        <span className="text-slate-400">{row.feature_key}</span>
+                        <span className={row.enabled ? "text-emerald-400" : "text-slate-500"}>
+                          {row.enabled ? "ON" : "OFF"}
+                        </span>
+                        {row.expires_at && (
+                          <span className="text-slate-600">
+                            만료 {new Date(row.expires_at).toLocaleString("ko-KR")}
+                          </span>
+                        )}
+                        <span className="text-slate-600">{row.source ?? "—"} / {row.enabled_by ?? "—"}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section>
+                <h2 className="text-sm font-medium text-slate-400 mb-2">서버 생성 사용 기록(쿼터 집계)</h2>
+                {auditLoading && imageUsageRows.length === 0 ? (
+                  <p className="text-slate-500 text-xs">불러오는 중...</p>
+                ) : imageUsageRows.length === 0 ? (
+                  <p className="text-slate-600 text-xs">내역 없음</p>
+                ) : (
+                  <ul className="space-y-1 max-h-48 overflow-y-auto text-xs">
+                    {imageUsageRows.map((row) => (
+                      <li
+                        key={row.id}
+                        className="py-1 px-2 rounded bg-slate-800/40 border border-slate-700/80 flex flex-wrap gap-2"
+                      >
+                        <time className="text-slate-500">{new Date(row.created_at).toLocaleString("ko-KR")}</time>
+                        <span>{row.nickname}</span>
+                        <span className="text-slate-500">{row.feature_key}</span>
+                        <span className="text-slate-600">{row.mode}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section>
+                <h2 className="text-sm font-medium text-slate-400 mb-2">저장된 생성 결과(미리보기)</h2>
+                {auditLoading && imageAssetRows.length === 0 ? (
+                  <p className="text-slate-500 text-xs">불러오는 중...</p>
+                ) : imageAssetRows.length === 0 ? (
+                  <p className="text-slate-600 text-xs">내역 없음</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {imageAssetRows.map((row) => (
+                      <div
+                        key={row.id}
+                        className="rounded-lg border border-slate-700 bg-slate-900/50 overflow-hidden text-[11px]"
+                      >
+                        {row.preview_url ? (
+                          <a href={row.preview_url} target="_blank" rel="noreferrer" className="block">
+                            <img src={row.preview_url} alt="" className="w-full h-28 object-cover" />
+                          </a>
+                        ) : (
+                          <div className="h-28 flex items-center justify-center text-slate-600 bg-slate-800/50">
+                            미리보기 URL 없음
+                          </div>
+                        )}
+                        <div className="p-2 space-y-1">
+                          <div className="text-slate-400">{new Date(row.created_at).toLocaleString("ko-KR")}</div>
+                          <div className="font-medium text-slate-300">{row.nickname}</div>
+                          <div className="text-slate-500">{row.feature_key} · {row.width ?? "?"}×{row.height ?? "?"}</div>
+                          <p className="text-slate-500 line-clamp-3 break-words">{row.prompt_preview}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
             </div>
           </>
         )}

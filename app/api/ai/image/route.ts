@@ -4,9 +4,18 @@ import { checkAndRecordServerImageUsage } from "@/lib/imageLimits";
 import { acquireImageLock, releaseImageLock } from "@/lib/imageLock";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createSignedImageUrl, sha256Hex, uploadPngBase64 } from "@/lib/imageStorage";
+import { verifyParticipantAuthHash } from "@/lib/participantAuth";
+import type { Database } from "@/types/supabase";
+
+type CachedAssetRow = Pick<
+  Database["public"]["Tables"]["image_generation_assets"]["Row"],
+  "storage_bucket" | "storage_path" | "width" | "height" | "created_at"
+>;
 
 type Body = {
   nickname?: string;
+  /** 비밀번호 SHA-256 hex — 타인 닉네임으로 서버 생성·쿼터 남용 방지 */
+  authHash?: string;
   featureKey?: FeatureKey;
   prompt?: string;
   negativePrompt?: string;
@@ -37,12 +46,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "잘못된 요청입니다." }, { status: 400 });
   }
 
+  const rawNick = String(body.nickname ?? "").trim().slice(0, 20);
   const nickname = normalizeNickname(body.nickname ?? "");
+  const authHash = String(body.authHash ?? "").trim();
   const featureKey = body.featureKey;
   const prompt = String(body.prompt ?? "").trim();
   const negativePrompt = String(body.negativePrompt ?? "").trim();
 
-  if (!nickname) return NextResponse.json({ error: "닉네임이 필요합니다." }, { status: 400 });
+  if (!nickname || !rawNick) return NextResponse.json({ error: "닉네임이 필요합니다." }, { status: 400 });
+  if (!authHash) {
+    return NextResponse.json(
+      { error: "내 기록 보기에서 닉네임·비밀번호 조회 후에만 서버 생성을 사용할 수 있습니다.", requiresAuth: true },
+      { status: 401 }
+    );
+  }
+  const authed = await verifyParticipantAuthHash(rawNick, authHash);
+  if (!authed) {
+    return NextResponse.json({ error: "인증에 실패했습니다. 비밀번호를 확인해 주세요.", requiresAuth: true }, { status: 401 });
+  }
+
   if (!featureKey) return NextResponse.json({ error: "featureKey가 필요합니다." }, { status: 400 });
   if (!prompt) return NextResponse.json({ error: "프롬프트가 필요합니다." }, { status: 400 });
 
@@ -73,15 +95,16 @@ export async function POST(request: NextRequest) {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (cached?.storage_bucket && cached.storage_path) {
-        const signedUrl = await createSignedImageUrl(cached.storage_bucket, cached.storage_path, 60 * 10);
+      const hit = cached as CachedAssetRow | null;
+      if (hit?.storage_bucket && hit.storage_path) {
+        const signedUrl = await createSignedImageUrl(hit.storage_bucket, hit.storage_path, 60 * 10);
         return NextResponse.json({
           cached: true,
           url: signedUrl,
-          storage: { bucket: cached.storage_bucket, path: cached.storage_path },
-          width: cached.width,
-          height: cached.height,
-          created_at: cached.created_at,
+          storage: { bucket: hit.storage_bucket, path: hit.storage_path },
+          width: hit.width,
+          height: hit.height,
+          created_at: hit.created_at,
         });
       }
     } catch {
@@ -160,29 +183,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "이미지 생성 결과가 없습니다." }, { status: 502 });
     }
 
-    // 스토리지 업로드 + 메타 저장
+    // 스토리지 업로드 + 메타 저장 (실패해도 base64는 반환 — 사용자는 화면에서 저장 가능)
+    let storageWarning: string | undefined;
     if (admin) {
       const up = await uploadPngBase64({ nickname, base64: b64, featureKey });
       if (up.ok) {
-        try {
-          await admin.from("image_generation_assets").insert({
-            nickname,
-            feature_key: featureKey,
-            mode: "server",
-            prompt,
-            negative_prompt: negativePrompt || null,
-            prompt_hash: promptHash,
-            width,
-            height,
-            steps,
-            storage_bucket: up.bucket,
-            storage_path: up.path,
-            engine: "sd_webui",
-            engine_meta: { engineUrl: engineUrl.slice(0, 200), cached: false },
-          } as never);
-        } catch {
-          // ignore
+        const ins = await admin.from("image_generation_assets").insert({
+          nickname,
+          feature_key: featureKey,
+          mode: "server",
+          prompt,
+          negative_prompt: negativePrompt || null,
+          prompt_hash: promptHash,
+          width,
+          height,
+          steps,
+          storage_bucket: up.bucket,
+          storage_path: up.path,
+          engine: "sd_webui",
+          engine_meta: { engineUrl: engineUrl.slice(0, 200), cached: false },
+        } as never);
+        if (ins.error) {
+          storageWarning = `이미지는 생성되었으나 메타 저장에 실패했습니다. (${ins.error.message})`;
         }
+      } else {
+        storageWarning = `스토리지 업로드 실패: ${up.error}. 버킷 생성·IMAGE_BUCKET·service_role 권한을 확인해 주세요.`;
       }
     }
 
@@ -191,6 +216,7 @@ export async function POST(request: NextRequest) {
       imageBase64: b64,
       width,
       height,
+      ...(storageWarning ? { storageWarning } : {}),
       usage: {
         usedToday: limitRes.usedToday,
         dailyLimit: limitRes.dailyLimit,

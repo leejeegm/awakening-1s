@@ -26,6 +26,8 @@ create index if not exists idx_image_generation_assets_prompt_hash
 alter table public.image_generation_assets enable row level security;
 
 -- 서비스 역할만 삽입/조회 가능 (anon 불가)
+-- 재실행 시 동일 이름 정책 충돌 방지
+drop policy if exists "Service role only" on public.image_generation_assets;
 create policy "Service role only"
   on public.image_generation_assets for all
   using (false)

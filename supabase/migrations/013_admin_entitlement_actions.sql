@@ -13,6 +13,7 @@ create table if not exists public.admin_entitlement_actions (
 alter table public.admin_entitlement_actions enable row level security;
 
 -- 서비스 역할만 삽입/조회 가능 (anon 불가)
+drop policy if exists "Service role only" on public.admin_entitlement_actions;
 create policy "Service role only"
   on public.admin_entitlement_actions for all
   using (false)

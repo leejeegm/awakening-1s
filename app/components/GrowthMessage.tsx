@@ -39,6 +39,8 @@ type Props = {
   usedToday?: number;
   usedPeriod?: number;
   lastRecordNickname?: string;
+  /** 「내 자각 실험 결과 보기」조회 성공 시 받은 비밀번호 해시(서버 이미지 인증) */
+  participantAuthHash?: string;
 };
 
 export default function GrowthMessage({
@@ -46,6 +48,7 @@ export default function GrowthMessage({
   usedToday = 0,
   usedPeriod,
   lastRecordNickname = "",
+  participantAuthHash = "",
 }: Props) {
   const prevUsedTodayRef = useRef<number | undefined>(undefined);
   // 디폴트 무음: 자동 읽기/말하기는 사용자가 켠 뒤에만 동작
@@ -83,8 +86,8 @@ export default function GrowthMessage({
   );
 
   const speakGrowth = useCallback(() => {
-    // 사용자가 눌러서 듣는 경우는 자동으로 음성을 켜고 재생
-    if (!voiceEnabled) setVoiceEnabled(true);
+    // 사용자 클릭 시 음성 켜기 + 재생(force는 voiceEnabled와 무관)
+    setVoiceEnabled(true);
     speak(GROWTH_TEXT, { force: true });
   }, [speak]);
 
@@ -470,6 +473,7 @@ export default function GrowthMessage({
         open={genOpen}
         onClose={() => setGenOpen(false)}
         nickname={getNickname()}
+        authHash={participantAuthHash}
         baseText={genBaseText}
       />
 

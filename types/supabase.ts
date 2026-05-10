@@ -114,6 +114,34 @@ export interface Database {
           reason?: string | null;
         };
       };
+      admin_entitlement_actions: {
+        Row: {
+          id: string;
+          created_at: string;
+          nickname: string;
+          feature_key: string;
+          enabled: boolean;
+          expires_at: string | null;
+          source: string | null;
+          enabled_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          nickname: string;
+          feature_key: string;
+          enabled: boolean;
+          expires_at?: string | null;
+          source?: string | null;
+          enabled_by?: string | null;
+        };
+        Update: {
+          enabled?: boolean;
+          expires_at?: string | null;
+          source?: string | null;
+          enabled_by?: string | null;
+        };
+      };
       participant_plans: {
         Row: {
           nickname: string;

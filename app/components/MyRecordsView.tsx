@@ -19,8 +19,8 @@ async function sha256Hex(text: string): Promise<string> {
 }
 
 type Props = {
-  /** 내 기록 보기로 조회 성공 시, 이 닉네임을 앱 전체의 '현재 사용자'로 반영해 주별 보고서·이전 멘트 등에 사용 */
-  onNicknameVerified?: (nickname: string) => void;
+  /** 내 기록 보기로 조회 성공 시: 닉네임 + 비밀번호 해시(서버 이미지 등 인증용) */
+  onNicknameVerified?: (nickname: string, authHash: string) => void;
   /** 현재 로그인(기록 저장) 중인 닉네임이 있으면 모달 입력 기본값으로 노출 */
   defaultNickname?: string;
 };
@@ -97,7 +97,7 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
       const items = Array.isArray(feedJson.items) ? (feedJson.items as AwakeningRow[]) : [];
       setRecords(items);
       setStatus("ok");
-      onNicknameVerified?.(n);
+      onNicknameVerified?.(n, hash);
     } catch {
       setMessage("오류가 발생했습니다.");
       setStatus("error");

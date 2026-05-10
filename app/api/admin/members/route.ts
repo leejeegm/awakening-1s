@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { verifyAdminCookie } from "@/lib/adminAuth";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import type { Database } from "@/types/supabase";
+
+type ParticipantKeysHintRow = Pick<
+  Database["public"]["Tables"]["participant_keys"]["Row"],
+  "nickname" | "password_hint"
+>;
 
 /** 회원(participant_keys) 목록 — 비밀번호 해시는 제외, 닉네임·힌트만 */
 export async function GET() {
@@ -19,7 +25,8 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const nicknames = (data ?? []).map((r) => String(r.nickname).trim().toLowerCase()).filter(Boolean);
+  const members = (data ?? []) as ParticipantKeysHintRow[];
+  const nicknames = members.map((r) => String(r.nickname).trim().toLowerCase()).filter(Boolean);
   const { data: entData } = await admin
     .from("participant_entitlements")
     .select("nickname, feature_key, enabled, expires_at")
@@ -38,7 +45,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    data: (data ?? []).map((m) => ({
+    data: members.map((m) => ({
       ...m,
       entitlements: entMap.get(String(m.nickname).trim().toLowerCase()) ?? { image_cut: false, comic_4panel: false },
     })),

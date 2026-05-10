@@ -9,6 +9,7 @@ create table if not exists public.image_generation_locks (
 alter table public.image_generation_locks enable row level security;
 
 -- 서비스 역할만 삽입/조회/삭제 가능 (anon 불가)
+drop policy if exists "Service role only" on public.image_generation_locks;
 create policy "Service role only"
   on public.image_generation_locks for all
   using (false)

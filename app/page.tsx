@@ -43,6 +43,8 @@ import { checkRecordLimit, type PlanType } from "@/lib/planLimits";
 
 const STORAGE_KEY = "awakening_attempts";
 const NICKNAME_KEY = "lastRecordNickname";
+/** sessionStorage: 닉네임별 비밀번호 해시(서버 이미지·히스토리 인증), 탭 단위 */
+const PARTICIPANT_AUTH_HASH_PREFIX = "participant_auth_hash_v1";
 
 function getStoredAttempts(): number {
   if (typeof window === "undefined") return 0;
@@ -90,11 +92,26 @@ export default function Home() {
   const [sectionKeys, setSectionKeys] = useState({ gauge: 0, points: 0, wordcloud: 0, timeline: 0, insight: 0, charts: 0, report: 0 });
   const [experimentEnded, setExperimentEnded] = useState(false);
   const [sharedNickname, setSharedNickname] = useState<string | null>(null);
+  const [participantAuthHash, setParticipantAuthHash] = useState("");
 
   useEffect(() => {
     setAttempts(getStoredAttempts());
     setLastRecordNickname(getStoredNickname());
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const nick = lastRecordNickname.trim();
+    if (!nick) {
+      setParticipantAuthHash("");
+      return;
+    }
+    try {
+      setParticipantAuthHash(sessionStorage.getItem(`${PARTICIPANT_AUTH_HASH_PREFIX}:${nick}`) ?? "");
+    } catch {
+      setParticipantAuthHash("");
+    }
+  }, [lastRecordNickname]);
 
   useEffect(() => {
     fetch("/api/experiment-status")
@@ -353,10 +370,12 @@ export default function Home() {
           <h2 className="text-sm font-medium text-slate-400">자각 기록</h2>
           <MyRecordsView
             defaultNickname={lastRecordNickname}
-            onNicknameVerified={(nick) => {
+            onNicknameVerified={(nick, hash) => {
               setLastRecordNickname(nick);
+              setParticipantAuthHash(hash);
               try {
                 localStorage.setItem(NICKNAME_KEY, nick);
+                sessionStorage.setItem(`${PARTICIPANT_AUTH_HASH_PREFIX}:${nick}`, hash);
               } catch {}
             }}
           />
@@ -423,6 +442,7 @@ export default function Home() {
           usedToday={planInfo.usedToday}
           usedPeriod={planInfo.usedPeriod}
           lastRecordNickname={lastRecordNickname}
+          participantAuthHash={participantAuthHash}
         />
       </section>
 
