@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildRuleBasedInsightCard } from "@/lib/ruleBasedAi";
 import { geminiGenerateText } from "@/lib/gemini";
+import { chooseAiUserText } from "@/lib/aiUserText";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
@@ -85,44 +86,67 @@ export async function GET(request: NextRequest) {
     });
 
   const prompt = nickname
-    ? `다음은 한 닉네임 사용자의 자각 기록 일부입니다. 키워드와 감정을 간단히 분석해, 긍정·창의·혁신·개방 관점에서 한 문단짜리 맞춤 카드 뉴스(동기부여 문구)를 한국어로 작성해 주세요. 2문장 이내로 짧게.${profileHint}\n\n기록:\n${textSample}`
-    : `다음은 여러 참여자의 자각 기록 일부입니다. 공통 키워드와 감응 트렌드를 간단히 분석해, 한 문단짜리 "이번 주 감응 트렌드" 카드 뉴스를 한국어로 작성해 주세요. 긍정·창의·혁신·개방 중 하나를 강조하고 2문장 이내로.\n\n기록:\n${textSample}`;
+    ? `다음은 한 사용자의 자각 기록 일부입니다. 이 사람이 스스로를 조금 더 이해하고 다정하게 밀어 줄 수 있도록, 한국어 1~2문장짜리 맞춤 감응 카드를 작성해 주세요.${profileHint}
+
+작성 규칙:
+- 첫 문장은 기록 속 흐름을 따뜻하게 알아봐 주는 공감
+- 둘째 문장은 삶에 작은 자극이 되는 가벼운 제안 또는 희망 한 줄
+- 생산성, 성과, 효율을 압박하는 말투 금지
+- 차갑거나 분석 보고서 같은 어조 금지
+- 키워드 목록, 점(·) 나열, 따옴표 나열 금지
+
+기록:
+${textSample}`
+    : `다음은 여러 참여자의 자각 기록 일부입니다. 이 흐름을 읽고 사람들이 조금 더 용기와 영감을 얻을 수 있도록, 한국어 1~2문장짜리 "이번 감응 트렌드" 카드를 작성해 주세요.
+
+작성 규칙:
+- 전체 흐름을 따뜻하게 요약
+- 마지막은 가벼운 희망 또는 다음을 기대하게 하는 한 줄
+- 딱딱한 분석 보고서 톤 금지
+- 키워드 목록, 점(·) 나열 금지
+
+기록:
+${textSample}`;
 
   const geminiPrompt =
-    "당신은 감응(Resonans) 실험을 위한 짧은 인사이트와 동기부여 문구를 작성하는 도우미입니다. 한국어로만 답하고 2문장 이내로 간결하게. 과학적·심리적 단정 및 의학 진단 금지.\n\n" +
+    "당신은 감응(Resonans) 실험을 위한 짧은 인사이트와 위로, 동기부여 문구를 작성하는 도우미입니다. 한국어로만 답하고 1~2문장 이내로 간결하게. 과학적 단정 및 의학 진단 금지.\n\n" +
     prompt;
 
   try {
-    const g1 = await geminiGenerateText({ prompt: geminiPrompt, maxOutputTokens: 300 });
+    const g1 = await geminiGenerateText({
+      prompt: geminiPrompt,
+      maxOutputTokens: 300,
+      rateLimitKey: `insight:${nickname || "trend"}`,
+    });
 
+    const ruleCard = ruleBased();
+    const geminiChoice = chooseAiUserText(g1.ok ? g1.text : "", ruleCard);
     const shouldUseHighPrecision = hasDecisional1s && !!OPENAI_API_KEY;
 
     if (!shouldUseHighPrecision) {
-      const card = g1.ok ? g1.text : ruleBased();
+      const card = g1.ok ? geminiChoice.text : ruleCard;
       try {
         await admin.from("ai_generated_content").insert({
           nickname: nickname || null,
           content_type: "insight_card",
           content: card,
-          meta: g1.ok
+          meta: g1.ok && geminiChoice.usedPrimary
             ? { source: "gemini", model: g1.model, scope: nickname ? "personal" : "trend", hasDecisional1s }
             : {
                 source: "rule",
                 scope: nickname ? "personal" : "trend",
-                reason: "gemini_unavailable",
+                reason: g1.ok ? "gemini_awkward_output" : "gemini_fallback",
                 hasDecisional1s,
-                geminiError: g1.error,
-                geminiStatus: g1.status ?? null,
+                geminiError: !g1.ok ? g1.error : null,
+                geminiStatus: !g1.ok ? g1.status ?? null : null,
+                geminiFailureKind: !g1.ok ? g1.failureKind : null,
+                geminiAwkwardOutput: g1.ok ? true : null,
               },
         } as never);
       } catch {
         // ignore
       }
-      return NextResponse.json({
-        card,
-        source: g1.ok ? "gemini" : "rule",
-        ...(g1.ok ? {} : { warning: "일시적 문제로 룰베이스 카드로 제공 중입니다." }),
-      });
+      return NextResponse.json({ card });
     }
 
     const refineSeed = g1.ok ? g1.text : "";
@@ -138,15 +162,17 @@ export async function GET(request: NextRequest) {
           {
             role: "system",
             content:
-              "당신은 감응(Resonans) 실험을 위한 짧은 인사이트와 동기부여 문구를 작성하는 도우미입니다. 한국어로만 답하고, 2문장 이내로 간결하게 작성하세요.",
+              "당신은 감응(Resonans) 실험을 위한 짧은 맞춤 감응 카드 문구를 작성하는 도우미입니다. 한국어로만 답하고, 1~2문장 이내로 작성하세요. " +
+              "사용자가 이해받고 위로받는 느낌이 우선이며, 마지막은 삶에 작은 자극이 되는 희망이나 가벼운 제안으로 마무리하세요. " +
+              "키워드 나열, 점(·) 나열, 딱딱한 보고서 톤은 금지합니다.",
           },
           {
             role: "user",
             content:
               `${prompt}\n\n` +
               (refineSeed
-                ? `참고로 Gemini가 1차로 만든 카드 문구가 있습니다. 2문장 이내로 더 자연스럽고 공감되게 다듬어 주세요.\nGemini 초안:\n${refineSeed}`
-                : "2문장 이내로 작성해 주세요."),
+                ? `참고로 Gemini가 1차로 만든 카드 문구가 있습니다. 의미를 유지하되 더 따뜻하고 자연스럽게 다듬어 주세요. 사용자가 힘을 얻는 느낌이 우선입니다.\nGemini 초안:\n${refineSeed}`
+                : "1~2문장 이내로 따뜻하고 자연스럽게 작성해 주세요."),
           },
         ],
         max_tokens: 300,
@@ -155,75 +181,93 @@ export async function GET(request: NextRequest) {
 
     if (!res.ok) {
       const err = await res.text().catch(() => "");
-      const card = g1.ok ? g1.text : ruleBased();
+      const card = g1.ok ? geminiChoice.text : ruleCard;
       try {
         await admin.from("ai_generated_content").insert({
           nickname: nickname || null,
           content_type: "insight_card",
           content: card,
           meta: {
-            source: g1.ok ? "gemini" : "rule",
+            source: g1.ok && geminiChoice.usedPrimary ? "gemini" : "rule",
             scope: nickname ? "personal" : "trend",
             hasDecisional1s,
+            openaiRefineFailed: true,
             openaiStatus: res.status,
             openaiError: err?.slice(0, 2000) || null,
-            geminiModel: g1.ok ? g1.model : null,
+            geminiModel: g1.ok && geminiChoice.usedPrimary ? g1.model : null,
+            geminiAwkwardOutput: g1.ok && !geminiChoice.usedPrimary ? true : null,
+            geminiFailureKind: !g1.ok ? g1.failureKind : null,
           },
         } as never);
       } catch {
         // ignore
       }
-      return NextResponse.json({
-        card,
-        source: g1.ok ? "gemini" : "rule",
-        warning: "정밀 모델 호출에 실패하여 1차 결과로 제공 중입니다.",
-      });
+      return NextResponse.json({ card });
     }
 
     const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const card =
-      json.choices?.[0]?.message?.content?.trim() ??
-      "감응 트렌드를 분석 중입니다. 잠시 후 다시 시도해 주세요.";
+    const rawCard = json.choices?.[0]?.message?.content?.trim();
+    const openaiChoice = chooseAiUserText(rawCard, g1.ok ? geminiChoice.text : ruleCard);
+    const card = openaiChoice.text;
+    const fallbackSource = g1.ok && geminiChoice.usedPrimary ? "gemini" : "rule";
 
     try {
       await admin.from("ai_generated_content").insert({
         nickname: nickname || null,
         content_type: "insight_card",
         content: card,
-        meta: {
-          source: "openai",
-          model: "gpt-4o",
-          scope: nickname ? "personal" : "trend",
-          hasDecisional1s,
-          upstream: g1.ok ? { source: "gemini", model: g1.model } : null,
-        },
+        meta:
+          openaiChoice.usedPrimary
+            ? {
+                source: "openai",
+                model: "gpt-4o",
+                scope: nickname ? "personal" : "trend",
+                hasDecisional1s,
+                upstream: g1.ok && geminiChoice.usedPrimary ? { source: "gemini", model: g1.model } : { source: "rule" },
+              }
+            : {
+                source: fallbackSource,
+                scope: nickname ? "personal" : "trend",
+                hasDecisional1s,
+                openaiRefineFailed: true,
+                openaiEmptyChoice: !rawCard || rawCard.length === 0,
+                openaiAwkwardOutput: rawCard && rawCard.length > 0 ? true : null,
+                geminiModel: g1.ok && geminiChoice.usedPrimary ? g1.model : null,
+                geminiAwkwardOutput: g1.ok && !geminiChoice.usedPrimary ? true : null,
+              },
       } as never);
     } catch {
       // 저장 실패해도 생성된 카드는 반환
     }
-    return NextResponse.json({ card, source: "openai" });
+    return NextResponse.json({ card });
   } catch (e) {
-    const g1 = await geminiGenerateText({ prompt: geminiPrompt, maxOutputTokens: 300 });
-    const card = g1.ok ? g1.text : ruleBased();
+    const g1 = await geminiGenerateText({
+      prompt: geminiPrompt,
+      maxOutputTokens: 300,
+      rateLimitKey: `insight:${nickname || "trend"}`,
+    });
+    const ruleCard = ruleBased();
+    const geminiChoice = chooseAiUserText(g1.ok ? g1.text : "", ruleCard);
+    const card = g1.ok ? geminiChoice.text : ruleCard;
     try {
       await admin.from("ai_generated_content").insert({
         nickname: nickname || null,
         content_type: "insight_card",
         content: card,
         meta: {
-          source: g1.ok ? "gemini" : "rule",
+          source: g1.ok && geminiChoice.usedPrimary ? "gemini" : "rule",
           scope: nickname ? "personal" : "trend",
           hasDecisional1s,
           openaiException: String(e).slice(0, 2000),
+          geminiAwkwardOutput: g1.ok && !geminiChoice.usedPrimary ? true : null,
+          geminiFailureKind: !g1.ok ? g1.failureKind : null,
+          geminiError: !g1.ok ? g1.error : null,
+          geminiStatus: !g1.ok ? g1.status ?? null : null,
         },
       } as never);
     } catch {
       // ignore
     }
-    return NextResponse.json({
-      card,
-      source: g1.ok ? "gemini" : "rule",
-      warning: g1.ok ? "정밀 단계 처리 중 예외가 있어 Gemini 결과만 제공했습니다." : "일시적 문제로 룰베이스 카드로 제공 중입니다.",
-    });
+    return NextResponse.json({ card });
   }
 }

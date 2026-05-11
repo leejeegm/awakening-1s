@@ -204,10 +204,14 @@ export async function POST(request: NextRequest) {
           engine_meta: { engineUrl: engineUrl.slice(0, 200), cached: false },
         } as never);
         if (ins.error) {
-          storageWarning = `이미지는 생성되었으나 메타 저장에 실패했습니다. (${ins.error.message})`;
+          console.warn("[image-storage] meta insert failed", ins.error.message);
+          storageWarning =
+            "이미지는 준비되었어요. 기록 보관에 잠시 반영이 늦을 수 있어요. 아래에서 다운로드로 저장해 두시면 안전해요.";
         }
       } else {
-        storageWarning = `스토리지 업로드 실패: ${up.error}. 버킷 생성·IMAGE_BUCKET·service_role 권한을 확인해 주세요.`;
+        console.warn("[image-storage] upload failed", up.error);
+        storageWarning =
+          "이미지는 만들어졌어요. 온라인 보관은 설정 점검이 필요할 수 있어요. 다운로드로 저장해 두시면 됩니다.";
       }
     }
 

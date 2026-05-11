@@ -1,11 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminPassword, setAdminCookie, isAdminConfigured } from "@/lib/adminAuth";
+import { getClientIp } from "@/lib/requestIp";
+import {
+  clearAdminLoginFailures,
+  isAdminLoginLocked,
+  recordAdminLoginFailure,
+} from "@/lib/adminLoginRateLimit";
 
 export async function POST(request: NextRequest) {
   if (!isAdminConfigured()) {
     return NextResponse.json(
       { error: "관리자 기능이 설정되지 않았습니다. ADMIN_SECRET, SUPABASE_SERVICE_ROLE_KEY를 확인하세요." },
       { status: 503 }
+    );
+  }
+  const ip = getClientIp(request);
+  if (isAdminLoginLocked(ip)) {
+    return NextResponse.json(
+      { error: "시도 횟수가 많습니다. 잠시 후 다시 시도해 주세요." },
+      { status: 429 }
     );
   }
   let body: { password?: string };
@@ -16,8 +29,10 @@ export async function POST(request: NextRequest) {
   }
   const password = body.password ?? "";
   if (!verifyAdminPassword(password)) {
+    recordAdminLoginFailure(ip);
     return NextResponse.json({ error: "비밀번호가 올바르지 않습니다." }, { status: 401 });
   }
+  clearAdminLoginFailures(ip);
   await setAdminCookie();
   return NextResponse.json({ ok: true });
 }

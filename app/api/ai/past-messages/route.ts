@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { toAiGeneratedContentType } from "@/lib/aiGeneratedContentTypes";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function GET(request: NextRequest) {
@@ -16,8 +17,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "nickname이 필요합니다.", items: [] }, { status: 400 });
   }
 
-  const validTypes = ["insight_card", "warm_message", "weekly_summary"];
-  const contentType = type && validTypes.includes(type) ? type : null;
+  const contentType = type ? toAiGeneratedContentType(type) : null;
 
   let q = admin
     .from("ai_generated_content")

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import { Volume2, VolumeX, Square, Sparkles } from "lucide-react";
 import ImageComicGeneratorModal from "@/app/components/ImageComicGeneratorModal";
+import { sanitizeAiUserText } from "@/lib/aiUserText";
 import {
   PLAN_LABELS,
   PLAN_DAILY_LIMIT,
@@ -58,10 +59,8 @@ export default function GrowthMessage({
   const [warmOpen, setWarmOpen] = useState(true);
   const [warmDuration, setWarmDuration] = useState<"1s" | "10s" | "100s">("1s");
   const [warmMessage, setWarmMessage] = useState<string | null>(null);
-  const [warmSource, setWarmSource] = useState<"openai" | "gemini" | "rule" | null>(null);
   const [warmLoading, setWarmLoading] = useState(false);
   const [warmError, setWarmError] = useState<string | null>(null);
-  const [warmWarning, setWarmWarning] = useState<string | null>(null);
   const [pastOpen, setPastOpen] = useState(false);
   const [pastItems, setPastItems] = useState<{ id: string; content_type: string; content: string; meta: unknown; created_at: string }[]>([]);
   const [pastLoading, setPastLoading] = useState(false);
@@ -118,9 +117,7 @@ export default function GrowthMessage({
     }
     setWarmLoading(true);
     setWarmError(null);
-    setWarmWarning(null);
     setWarmMessage(null);
-    setWarmSource(null);
     try {
       const res = await fetch(
         `/api/ai/warm-message?nickname=${encodeURIComponent(nick)}&durationType=${warmDuration}`
@@ -128,21 +125,12 @@ export default function GrowthMessage({
       const data = (await res.json()) as {
         message?: string;
         error?: string;
-        warning?: string;
-        source?: "openai" | "gemini" | "rule";
       };
       if (!res.ok) {
         setWarmError(data.error ?? "요청 실패");
         return;
       }
-      const src = data.source;
-      setWarmSource(src === "openai" || src === "gemini" || src === "rule" ? src : null);
-      setWarmWarning(
-        data.source === "rule"
-          ? (data.warning ?? "일시적 문제로 룰베이스 메시지로 제공 중입니다.")
-          : null
-      );
-      setWarmMessage(data.message ?? null);
+      setWarmMessage(data.message ? sanitizeAiUserText(String(data.message)) : null);
     } catch {
       setWarmError("네트워크 오류");
     } finally {
@@ -171,7 +159,12 @@ export default function GrowthMessage({
         setPastItems([]);
         return;
       }
-      setPastItems(data.items ?? []);
+      setPastItems(
+        (data.items ?? []).map((item) => ({
+          ...item,
+          content: typeof item.content === "string" ? sanitizeAiUserText(item.content) : item.content,
+        }))
+      );
     } catch {
       setPastError("네트워크 오류");
       setPastItems([]);
@@ -285,7 +278,6 @@ export default function GrowthMessage({
                 onClick={() => {
                   setWarmDuration(opt.value);
                   setWarmMessage(null);
-                  setWarmSource(null);
                   setWarmError(null);
                 }}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
@@ -347,22 +339,9 @@ export default function GrowthMessage({
             )}
           </div>
           {warmError && <p className="text-xs text-red-400">{warmError}</p>}
-          {warmWarning && <p className="text-xs text-amber-300">{warmWarning}</p>}
           {warmMessage && (
-            <div className="p-3 rounded-lg bg-slate-800/80 border border-slate-600 text-sm text-slate-200 leading-relaxed space-y-2">
-              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                {warmSource === "openai" && (
-                  <span className="px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-200 border border-violet-400/30">
-                    GPT-4o 정밀
-                  </span>
-                )}
-                {warmSource === "gemini" && (
-                  <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-200 border border-sky-400/25">
-                    Gemini 요약 (1차)
-                  </span>
-                )}
-              </div>
-              <div className="leading-relaxed">{warmMessage}</div>
+            <div className="p-3 rounded-lg bg-slate-800/80 border border-slate-600 text-sm text-slate-200 leading-relaxed">
+              {warmMessage}
             </div>
           )}
           <button
@@ -422,13 +401,6 @@ export default function GrowthMessage({
                             : item.content_type === "weekly_summary"
                               ? "주별 요약"
                               : item.content_type}
-                        {typeof item.meta === "object" &&
-                          item.meta !== null &&
-                          (item.meta as { source?: string }).source === "rule" && (
-                            <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-400/30">
-                              룰베이스
-                            </span>
-                          )}
                       </span>
                       <time>{new Date(item.created_at).toLocaleString("ko-KR")}</time>
                     </div>
@@ -439,7 +411,7 @@ export default function GrowthMessage({
                       <button
                         type="button"
                         onClick={() => {
-                          const text = typeof item.content === "string" ? item.content : "";
+                          const text = typeof item.content === "string" ? sanitizeAiUserText(item.content) : "";
                           if (!voiceEnabled) setVoiceEnabled(true);
                           speak(text, { force: true });
                         }}
@@ -475,7 +447,7 @@ export default function GrowthMessage({
                       <button
                         type="button"
                         onClick={() => {
-                          setGenBaseText(typeof item.content === "string" ? item.content : "");
+                          setGenBaseText(typeof item.content === "string" ? sanitizeAiUserText(item.content) : "");
                           setGenOpen(true);
                         }}
                         className="text-xs px-2 py-1 rounded bg-deep-violet/50 text-slate-200 hover:bg-deep-violet/70"

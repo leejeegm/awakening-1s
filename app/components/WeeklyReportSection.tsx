@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { FileText, Download } from "lucide-react";
 import { getThisWeekSundayKST } from "@/lib/weekRange";
 import SpeechControls from "@/app/components/SpeechControls";
+import { sanitizeAiUserText } from "@/lib/aiUserText";
 
 type ReportData = {
   week: string;
@@ -12,7 +13,6 @@ type ReportData = {
   recordCount: number;
   records: { id: string; created_at: string; note: string }[];
   sentimentSummary: string;
-  sentimentSource?: "openai" | "gemini" | "rule";
   keywordSummary: { keyword: string; count: number }[];
   canDownload: boolean;
 };
@@ -53,7 +53,10 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
         setError(json.error ?? "보고서를 불러올 수 없습니다.");
         return;
       }
-      setData(json);
+      setData({
+        ...json,
+        sentimentSummary: sanitizeAiUserText(String(json.sentimentSummary ?? "")),
+      });
     } finally {
       setLoading(false);
     }
@@ -116,7 +119,7 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
     <section className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-4 space-y-4">
       <h3 className="text-sm font-medium text-slate-400 flex items-center gap-2">
         <FileText className="w-4 h-4" />
-        주별 1페이지 보고서 (AI 감정 요약)
+        주별 1페이지 보고서 (감응 요약)
       </h3>
       <p className="text-xs text-slate-500">
         주별 마지막날(일요일) 0시 KST 기준. 무료: 보기만 가능. 유료 플랜(초°·분°·시°설계자): PDF 다운로드 가능. 다른 닉네임 조회 시 해당 닉네임의 비밀번호 입력이 필요합니다.
@@ -189,19 +192,7 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
           </div>
           {data.sentimentSummary && (
             <div>
-              <p className="text-[11px] text-slate-400 mb-0.5 flex items-center gap-2">
-                <span>AI 감정 요약</span>
-                {data.sentimentSource === "rule" && (
-                  <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-400/30">
-                    일시적 문제로 룰베이스 제공
-                  </span>
-                )}
-                {data.sentimentSource === "gemini" && (
-                  <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-200 border border-sky-400/25">
-                    Gemini 요약 (1차)
-                  </span>
-                )}
-              </p>
+              <p className="text-[11px] text-slate-400 mb-0.5">이번 주 감응 요약</p>
               <p className="text-sm text-slate-300 leading-relaxed">{data.sentimentSummary}</p>
               <div className="mt-2">
                 <SpeechControls

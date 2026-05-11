@@ -49,6 +49,7 @@ export interface Database {
           deleted_by?: string | null;
           purge_hold?: boolean;
         };
+        Relationships: [];
       };
       participant_keys: {
         Row: {
@@ -66,6 +67,7 @@ export interface Database {
           password_hash?: string;
           password_hint?: string | null;
         };
+        Relationships: [];
       };
       reactions: {
         Row: {
@@ -86,6 +88,7 @@ export interface Database {
           reaction_type?: "gam" | "eung";
           created_at?: string;
         };
+        Relationships: [];
       };
       admin_actions: {
         Row: {
@@ -113,6 +116,7 @@ export interface Database {
           new_note?: string | null;
           reason?: string | null;
         };
+        Relationships: [];
       };
       admin_entitlement_actions: {
         Row: {
@@ -141,6 +145,7 @@ export interface Database {
           source?: string | null;
           enabled_by?: string | null;
         };
+        Relationships: [];
       };
       participant_plans: {
         Row: {
@@ -159,6 +164,7 @@ export interface Database {
           plan_type?: "cho" | "bun" | "si";
           valid_until?: string;
         };
+        Relationships: [];
       };
       participant_profiles: {
         Row: {
@@ -178,6 +184,7 @@ export interface Database {
           age_group?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
       participant_entitlements: {
         Row: {
@@ -207,6 +214,7 @@ export interface Database {
           expires_at?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
       image_generation_usage: {
         Row: {
@@ -228,6 +236,7 @@ export interface Database {
           feature_key?: string;
           mode?: string;
         };
+        Relationships: [];
       };
       image_generation_locks: {
         Row: {
@@ -246,6 +255,7 @@ export interface Database {
           locked_until?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       image_generation_assets: {
         Row: {
@@ -296,6 +306,7 @@ export interface Database {
           engine?: string | null;
           engine_meta?: unknown | null;
         };
+        Relationships: [];
       };
       ai_generated_content: {
         Row: {
@@ -320,6 +331,7 @@ export interface Database {
           content?: string;
           meta?: unknown;
         };
+        Relationships: [];
       };
       experiment_control: {
         Row: {
@@ -342,10 +354,32 @@ export interface Database {
           ended_by?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
+      };
+      gemini_rate_counters: {
+        Row: {
+          rate_key: string;
+          window_start: string;
+          call_count: number;
+        };
+        Insert: {
+          rate_key: string;
+          window_start: string;
+          call_count?: number;
+        };
+        Update: {
+          call_count?: number;
+        };
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      try_consume_gemini_rate: {
+        Args: { p_max: number; p_rate_key: string; p_window_start: string };
+        Returns: boolean;
+      };
+    };
     Enums: Record<string, never>;
   };
 }

@@ -1,5 +1,15 @@
 import { geminiGenerateText } from "@/lib/gemini";
 
+/**
+ * 공개 저장 정책 (환경 변수 `MODERATION_STRICT_NO_AI`)
+ * - false(기본): 룰 통과 후 Gemini 실패·OpenAI 없음이면 **룰만으로 공개 허용**.
+ * - true: 룰 통과 후 **AI 분류 결과를 반드시 받아야** 공개 허용. Gemini·OpenAI 모두 실패 시 **공개 차단**.
+ */
+function isModerationStrictNoAi(): boolean {
+  const v = (process.env.MODERATION_STRICT_NO_AI ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
 type ModerationResult = {
   allowed: boolean;
   severity: "ok" | "warn" | "block";
@@ -9,6 +19,8 @@ type ModerationResult = {
 export type ModerateOptions = {
   /** 결정적 찰나(1s)일 때만 경계(warn) 건에 고성능 모델을 추가 호출합니다. */
   durationType?: "1s" | "10s" | "100s";
+  /** Gemini 레이트 리밋 키 (클라이언트 IP 권장) */
+  clientIp?: string;
 };
 
 const BLOCK_PATTERNS: RegExp[] = [
@@ -62,7 +74,7 @@ function parseModerationJson(raw: string): ModerationResult | null {
   }
 }
 
-async function geminiClassify(note: string): Promise<ModerationResult | null> {
+async function geminiClassify(note: string, rateLimitKey: string): Promise<ModerationResult | null> {
   const prompt =
     "너는 공개 게시용 짧은 텍스트를 안전 정책 관점에서 분류한다.\n" +
     "다음 형식의 JSON **한 줄(또는 단일 객체)만** 출력한다. 코드펜스·설명 금지.\n" +
@@ -73,7 +85,7 @@ async function geminiClassify(note: string): Promise<ModerationResult | null> {
     "텍스트:\n" +
     note.slice(0, 300);
 
-  const g = await geminiGenerateText({ prompt, maxOutputTokens: 180 });
+  const g = await geminiGenerateText({ prompt, maxOutputTokens: 180, rateLimitKey: `mod:${rateLimitKey}` });
   if (!g.ok) return null;
   return parseModerationJson(g.text);
 }
@@ -115,7 +127,8 @@ export async function moderateForPublicShare(note: string, opts?: ModerateOption
   if (!rb.allowed) return rb;
 
   const openaiKey = process.env.OPENAI_API_KEY ?? "";
-  const geminiFirst = await geminiClassify(note);
+  const rlKey = (opts?.clientIp ?? "unknown").slice(0, 64);
+  const geminiFirst = await geminiClassify(note, rlKey);
 
   const isDecisionalMoment = opts?.durationType === "1s";
 
@@ -123,6 +136,13 @@ export async function moderateForPublicShare(note: string, opts?: ModerateOption
     if (openaiKey) {
       const o = await openAiClassify(note, openaiKey);
       if (o) return o;
+    }
+    if (isModerationStrictNoAi()) {
+      return {
+        allowed: false,
+        severity: "block",
+        reason: "ai_moderation_unavailable",
+      };
     }
     return rb;
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { formatAiContentAdminLines } from "@/lib/aiAdminMeta";
 
 type RecordRow = {
   id: string;
@@ -1269,13 +1270,11 @@ export default function AdminPage() {
                       <span>{row.content_type}</span>
                       <time>{new Date(row.created_at).toLocaleString("ko-KR")}</time>
                     </div>
-                    {typeof row.meta === "object" &&
-                      row.meta !== null &&
-                      (row.meta as { source?: string }).source === "rule" && (
-                        <p className="mt-1 text-[11px] text-amber-200">
-                          일시적 문제로 룰베이스 제공
-                        </p>
-                      )}
+                    {formatAiContentAdminLines(row.meta).map((line, i) => (
+                      <p key={i} className="mt-0.5 text-[11px] text-amber-100/90 font-mono break-all">
+                        [내부] {line}
+                      </p>
+                    ))}
                     <p className="mt-1 text-sm text-slate-300 break-words line-clamp-3">
                       {typeof row.content === "string" ? row.content : JSON.stringify(row.content)}
                     </p>

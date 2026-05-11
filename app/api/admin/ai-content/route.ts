@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminCookie } from "@/lib/adminAuth";
+import { toAiGeneratedContentType } from "@/lib/aiGeneratedContentTypes";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function GET(request: NextRequest) {
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
   const contentType = searchParams.get("type")?.trim() || "";
 
   // 통계: content_type별 개수 (유형별 count 쿼리)
-  const types = ["warm_message", "insight_card", "weekly_summary"];
+  const types = ["warm_message", "insight_card", "weekly_summary"] as const;
   const typeCounts: Record<string, number> = {};
   await Promise.all(
     types.map(async (t) => {
@@ -37,7 +38,8 @@ export async function GET(request: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (nickname) q = q.eq("nickname", nickname);
-  if (contentType) q = q.eq("content_type", contentType);
+  const typeFilter = toAiGeneratedContentType(contentType);
+  if (typeFilter) q = q.eq("content_type", typeFilter);
 
   const { data, error, count } = await q.range(from, from + limit - 1);
 

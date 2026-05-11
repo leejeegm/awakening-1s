@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { moderateForPublicShare } from "@/lib/moderation";
+import { getClientIp } from "@/lib/requestIp";
 
 type Body = {
   nickname?: string;
@@ -43,7 +44,10 @@ export async function POST(request: NextRequest) {
   let deleted_by: string | null = null;
 
   if (isPublicRequested) {
-    const mod = await moderateForPublicShare(noteSliced, { durationType });
+    const mod = await moderateForPublicShare(noteSliced, {
+      durationType,
+      clientIp: getClientIp(request),
+    });
     if (!mod.allowed && mod.severity === "block") {
       // 공개 공유는 차단: 저장은 하되 공개되지 않도록 "삭제(보관)" 상태로 둠
       isPublic = false;

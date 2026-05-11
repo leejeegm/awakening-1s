@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWeekRangeKST } from "@/lib/weekRange";
 import { buildRuleBasedWeeklySummary } from "@/lib/ruleBasedAi";
 import { geminiGenerateText } from "@/lib/gemini";
+import { chooseAiUserText } from "@/lib/aiUserText";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
@@ -32,32 +33,71 @@ function buildKeywordSummary(notes: string[]): { keyword: string; count: number 
 
 async function getSentimentSummary(
   notes: string[],
-  hasDecisional1s: boolean
-): Promise<{ summary: string; source: "openai" | "gemini" | "rule"; model: string | null }> {
+  hasDecisional1s: boolean,
+  nickname: string
+): Promise<{
+  summary: string;
+  source: "openai" | "gemini" | "rule";
+  model: string | null;
+  diagnostics: Record<string, unknown>;
+}> {
   if (notes.length === 0) {
-    return { summary: "이번 주 기록이 없어 요약할 내용이 없습니다.", source: "rule", model: null };
+    return { summary: "이번 주 기록이 없어 요약할 내용이 없습니다.", source: "rule", model: null, diagnostics: {} };
   }
 
   const text = notes.slice(0, 30).join("\n");
-  const userBlock = `다음은 한 주간의 자각 기록입니다. 전체적인 감정·동기·트렌드를 요약해 주세요.\n\n${text}`;
+  const userBlock = `다음은 한 주간의 자각 기록입니다. 이를 바탕으로 사용자가 자신의 한 주를 따뜻하게 돌아보고 다음 주를 조금 더 기대할 수 있는 주간 요약을 작성해 주세요.
+
+작성 규칙:
+- 한국어 2~3문장
+- 첫 문장은 이번 주의 흐름을 공감하며 정리
+- 다음 문장은 기록 속에서 드러난 가능성이나 작은 희망을 짚기
+- 마지막은 부담을 주지 않는 가벼운 제안 또는 응원
+- 차가운 분석 보고서 톤, 성과 압박, 키워드 목록 나열 금지
+
+기록:
+${text}`;
   const geminiPrompt =
-    "당신은 사용자의 자각 기록을 읽고 감정·동기를 요약하는 도우미입니다. 한국어로 2~3문장 이내. 과학적 단정·의학 진단 금지.\n\n" +
+    "당신은 사용자의 자각 기록을 읽고 한 주를 따뜻하게 요약해 주는 도우미입니다. 한국어로 2~3문장 이내. 과학적 단정·의학 진단 금지.\n\n" +
     userBlock;
 
-  const g1 = await geminiGenerateText({ prompt: geminiPrompt, maxOutputTokens: 320 });
+  const g1 = await geminiGenerateText({
+    prompt: geminiPrompt,
+    maxOutputTokens: 320,
+    rateLimitKey: `weekly:${nickname}`,
+  });
+
+  const ruleSummary = buildRuleBasedWeeklySummary(notes);
+  const geminiChoice = chooseAiUserText(g1.ok ? g1.text : "", ruleSummary);
 
   const ruleFallback = () => ({
-    summary: buildRuleBasedWeeklySummary(notes),
+    summary: ruleSummary,
     source: "rule" as const,
     model: null as null,
+    diagnostics: !g1.ok
+      ? {
+          reason: "gemini_fallback",
+          geminiFailureKind: g1.failureKind,
+          geminiError: g1.error,
+          geminiStatus: g1.status ?? null,
+        }
+      : geminiChoice.primaryWasAwkward
+        ? {
+            reason: "gemini_awkward_output",
+            geminiAwkwardOutput: true,
+          }
+      : {},
   });
 
   /** 주간 요약에는 '결정적 찰나(1s)' 기록이 있을 때만 고성능 모델로 정밀화 */
   const shouldUseHighPrecision = hasDecisional1s && !!OPENAI_API_KEY;
 
   if (!shouldUseHighPrecision) {
-    if (g1.ok) return { summary: g1.text, source: "gemini", model: g1.model };
-    return ruleFallback();
+    if (g1.ok && geminiChoice.usedPrimary) {
+      return { summary: geminiChoice.text, source: "gemini", model: g1.model, diagnostics: {} };
+    }
+    const r = ruleFallback();
+    return { summary: r.summary, source: r.source, model: r.model, diagnostics: r.diagnostics };
   }
 
   try {
@@ -73,14 +113,15 @@ async function getSentimentSummary(
           {
             role: "system",
             content:
-              "당신은 사용자의 자각 기록을 읽고 감정·동기를 한 문단으로 요약하는 도우미입니다. 한국어로 2~3문장 이내로 작성하세요.",
+              "당신은 사용자의 자각 기록을 읽고 한 주를 다정하게 돌아보게 해 주는 보고서 요약을 작성하는 도우미입니다. 한국어로 2~3문장 이내로 작성하세요. " +
+              "공감과 희망이 느껴져야 하며, 마지막은 부담을 낮추는 가벼운 제안이나 응원으로 마무리하세요. 차가운 분석 보고서 톤은 금지합니다.",
           },
           {
             role: "user",
             content:
               `${userBlock}\n\n` +
               (g1.ok
-                ? `참고로 Gemini가 1차 요약을 만들었습니다. 의미는 유지하되 더 자연스럽게 다듬어 주세요 (2~3문장).\nGemini 초안:\n${g1.text}`
+                ? `참고로 Gemini가 1차 요약을 만들었습니다. 의미는 유지하되 더 따뜻하고 자연스럽게 다듬어 주세요 (2~3문장). 사용자가 위로와 작은 용기를 얻는 느낌이 우선입니다.\nGemini 초안:\n${g1.text}`
                 : ""),
           },
         ],
@@ -88,19 +129,68 @@ async function getSentimentSummary(
       }),
     });
     if (!res.ok) {
-      if (g1.ok) return { summary: g1.text, source: "gemini", model: g1.model };
-      return ruleFallback();
+      const errBody = await res.text().catch(() => "");
+      if (g1.ok && geminiChoice.usedPrimary) {
+        return {
+          summary: geminiChoice.text,
+          source: "gemini",
+          model: g1.model,
+          diagnostics: {
+            openaiRefineFailed: true,
+            openaiStatus: res.status,
+            openaiError: errBody.slice(0, 2000),
+          },
+        };
+      }
+      const r = ruleFallback();
+      return {
+        summary: r.summary,
+        source: r.source,
+        model: r.model,
+        diagnostics: {
+          ...r.diagnostics,
+          openaiRefineFailed: true,
+          openaiStatus: res.status,
+          openaiError: errBody.slice(0, 2000),
+        },
+      };
     }
     const json = await res.json();
     const content = json.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      if (g1.ok) return { summary: g1.text, source: "gemini", model: g1.model };
-      return ruleFallback();
+    const openaiChoice = chooseAiUserText(content, g1.ok ? geminiChoice.text : ruleSummary);
+    if (!openaiChoice.usedPrimary) {
+      if (g1.ok && geminiChoice.usedPrimary) {
+        return {
+          summary: geminiChoice.text,
+          source: "gemini",
+          model: g1.model,
+          diagnostics: {
+            openaiRefineFailed: true,
+            openaiEmptyChoice: !content || content.length === 0,
+            openaiAwkwardOutput: content && content.length > 0 ? true : null,
+          },
+        };
+      }
+      const r = ruleFallback();
+      return {
+        summary: r.summary,
+        source: r.source,
+        model: r.model,
+        diagnostics: {
+          ...r.diagnostics,
+          openaiRefineFailed: true,
+          openaiEmptyChoice: !content || content.length === 0,
+          openaiAwkwardOutput: content && content.length > 0 ? true : null,
+        },
+      };
     }
-    return { summary: content, source: "openai", model: "gpt-4o" };
+    return { summary: openaiChoice.text, source: "openai", model: "gpt-4o", diagnostics: {} };
   } catch {
-    if (g1.ok) return { summary: g1.text, source: "gemini", model: g1.model };
-    return ruleFallback();
+    if (g1.ok && geminiChoice.usedPrimary) {
+      return { summary: geminiChoice.text, source: "gemini", model: g1.model, diagnostics: { openaiRefineFailed: true } };
+    }
+    const r = ruleFallback();
+    return { summary: r.summary, source: r.source, model: r.model, diagnostics: r.diagnostics };
   }
 }
 
@@ -140,7 +230,7 @@ export async function GET(request: NextRequest) {
   const notes = rows.map((r) => r.note).filter(Boolean);
   const keywordSummary = buildKeywordSummary(notes);
   const hasDecisional1s = rows.some((r) => String(r.duration_type ?? "") === "1s");
-  const sentiment = await getSentimentSummary(notes, hasDecisional1s);
+  const sentiment = await getSentimentSummary(notes, hasDecisional1s, nickname);
 
   try {
     await admin.from("ai_generated_content").insert({
@@ -153,6 +243,7 @@ export async function GET(request: NextRequest) {
         source: sentiment.source,
         model: sentiment.model,
         hasDecisional1s,
+        ...sentiment.diagnostics,
       },
     } as never);
   } catch {
@@ -177,7 +268,6 @@ export async function GET(request: NextRequest) {
     recordCount: rows.length,
     records: rows,
     sentimentSummary: sentiment.summary,
-    sentimentSource: sentiment.source,
     keywordSummary,
     canDownload: !!canDownload,
   };
@@ -191,21 +281,21 @@ export async function GET(request: NextRequest) {
       const lineH = 7;
 
       doc.setFontSize(16);
-      doc.text("Weekly Report (주별 보고서)", 20, y);
+      doc.text("주간 감응 보고서", 20, y);
       y += lineH * 2;
       doc.setFontSize(11);
-      doc.text(`Week: ${label}`, 20, y);
+      doc.text(`주간: ${label}`, 20, y);
       y += lineH;
-      doc.text(`Nickname: ${nickname}`, 20, y);
+      doc.text(`닉네임: ${nickname}`, 20, y);
       y += lineH;
-      doc.text(`Records: ${rows.length}`, 20, y);
+      doc.text(`기록 수: ${rows.length}`, 20, y);
       y += lineH * 1.5;
-      doc.text("Sentiment summary:", 20, y);
+      doc.text("이번 주 감응 요약:", 20, y);
       y += lineH;
       const splitSentiment = doc.splitTextToSize(sentiment.summary, pageW - 40);
       doc.text(splitSentiment, 20, y);
       y += lineH * (splitSentiment.length + 1);
-      doc.text("Top keywords:", 20, y);
+      doc.text("주요 키워드:", 20, y);
       y += lineH;
       keywordSummary.slice(0, 10).forEach((k) => {
         doc.text(`  ${k.keyword}: ${k.count}`, 20, y);
