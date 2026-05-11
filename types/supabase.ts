@@ -216,6 +216,245 @@ export interface Database {
         };
         Relationships: [];
       };
+      premium_report_products: {
+        Row: {
+          id: string;
+          code: string;
+          name: string;
+          description: string | null;
+          default_pages: number;
+          sections_json: Json;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          name: string;
+          description?: string | null;
+          default_pages?: number;
+          sections_json?: Json;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          code?: string;
+          name?: string;
+          description?: string | null;
+          default_pages?: number;
+          sections_json?: Json;
+          active?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      premium_report_requests: {
+        Row: {
+          id: string;
+          nickname: string;
+          product_id: string;
+          status: "requested" | "paid_pending" | "approved" | "in_progress" | "ready" | "rejected" | "expired";
+          payment_status: "unpaid" | "pending_manual_check" | "confirmed" | "failed" | "refunded";
+          admin_note: string | null;
+          approved_by: string | null;
+          approved_at: string | null;
+          downloadable: boolean;
+          downloadable_at: string | null;
+          expires_at: string | null;
+          requested_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          nickname: string;
+          product_id: string;
+          status?: "requested" | "paid_pending" | "approved" | "in_progress" | "ready" | "rejected" | "expired";
+          payment_status?: "unpaid" | "pending_manual_check" | "confirmed" | "failed" | "refunded";
+          admin_note?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          downloadable?: boolean;
+          downloadable_at?: string | null;
+          expires_at?: string | null;
+          requested_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          nickname?: string;
+          product_id?: string;
+          status?: "requested" | "paid_pending" | "approved" | "in_progress" | "ready" | "rejected" | "expired";
+          payment_status?: "unpaid" | "pending_manual_check" | "confirmed" | "failed" | "refunded";
+          admin_note?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          downloadable?: boolean;
+          downloadable_at?: string | null;
+          expires_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      premium_report_source_snapshots: {
+        Row: {
+          id: string;
+          request_id: string;
+          profile_json: Json;
+          trend_json: Json;
+          ai_history_json: Json;
+          record_window_from: string;
+          record_window_to: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          request_id: string;
+          profile_json?: Json;
+          trend_json?: Json;
+          ai_history_json?: Json;
+          record_window_from: string;
+          record_window_to: string;
+          created_at?: string;
+        };
+        Update: {
+          request_id?: string;
+          profile_json?: Json;
+          trend_json?: Json;
+          ai_history_json?: Json;
+          record_window_from?: string;
+          record_window_to?: string;
+        };
+        Relationships: [];
+      };
+      premium_report_documents: {
+        Row: {
+          id: string;
+          request_id: string;
+          version: number;
+          title: string;
+          summary_text: string | null;
+          sections_json: Json;
+          page_count: number;
+          pdf_status: "draft" | "generating" | "ready" | "failed";
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          request_id: string;
+          version?: number;
+          title: string;
+          summary_text?: string | null;
+          sections_json?: Json;
+          page_count?: number;
+          pdf_status?: "draft" | "generating" | "ready" | "failed";
+          created_by?: string | null;
+          updated_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          request_id?: string;
+          version?: number;
+          title?: string;
+          summary_text?: string | null;
+          sections_json?: Json;
+          page_count?: number;
+          pdf_status?: "draft" | "generating" | "ready" | "failed";
+          created_by?: string | null;
+          updated_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      premium_report_assets: {
+        Row: {
+          id: string;
+          request_id: string;
+          asset_type: "chart_image" | "attachment_pdf" | "attachment_image" | "final_pdf" | "analysis_note";
+          storage_bucket: string | null;
+          storage_path: string | null;
+          mime_type: string | null;
+          meta_json: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          request_id: string;
+          asset_type: "chart_image" | "attachment_pdf" | "attachment_image" | "final_pdf" | "analysis_note";
+          storage_bucket?: string | null;
+          storage_path?: string | null;
+          mime_type?: string | null;
+          meta_json?: Json;
+          created_at?: string;
+        };
+        Update: {
+          request_id?: string;
+          asset_type?: "chart_image" | "attachment_pdf" | "attachment_image" | "final_pdf" | "analysis_note";
+          storage_bucket?: string | null;
+          storage_path?: string | null;
+          mime_type?: string | null;
+          meta_json?: Json;
+        };
+        Relationships: [];
+      };
+      premium_report_actions: {
+        Row: {
+          id: string;
+          request_id: string;
+          action: string;
+          actor: string | null;
+          meta_json: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          request_id: string;
+          action: string;
+          actor?: string | null;
+          meta_json?: Json;
+          created_at?: string;
+        };
+        Update: {
+          request_id?: string;
+          action?: string;
+          actor?: string | null;
+          meta_json?: Json;
+        };
+        Relationships: [];
+      };
+      premium_report_eligibility_snapshots: {
+        Row: {
+          nickname: string;
+          qualifies: boolean;
+          consecutive_weeks: number;
+          qualifies_from_week: string | null;
+          evaluated_at: string;
+          weekly_day_counts_json: Json;
+          meta_json: Json;
+        };
+        Insert: {
+          nickname: string;
+          qualifies?: boolean;
+          consecutive_weeks?: number;
+          qualifies_from_week?: string | null;
+          evaluated_at?: string;
+          weekly_day_counts_json?: Json;
+          meta_json?: Json;
+        };
+        Update: {
+          qualifies?: boolean;
+          consecutive_weeks?: number;
+          qualifies_from_week?: string | null;
+          evaluated_at?: string;
+          weekly_day_counts_json?: Json;
+          meta_json?: Json;
+        };
+        Relationships: [];
+      };
       image_generation_usage: {
         Row: {
           id: string;

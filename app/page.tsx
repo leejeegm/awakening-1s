@@ -36,6 +36,7 @@ const ReactionCharts = dynamic(() => import("./components/ReactionCharts"), {
 });
 const WeeklyReportSection = dynamic(() => import("./components/WeeklyReportSection"), { ssr: false });
 const ResonanceNicknameSection = dynamic(() => import("./components/ResonanceNicknameSection"), { ssr: false });
+const PremiumReportCTA = dynamic(() => import("./components/PremiumReportCTA"), { ssr: false });
 
 import type { DurationType, GenderType, AgeGroupType } from "./components/RecordModal";
 import SectionErrorBoundary from "./components/SectionErrorBoundary";
@@ -399,14 +400,27 @@ export default function Home() {
           ))}
         </div>
 
-        {/* 기록하기 버튼 → 모달 열기 */}
-        <button
-          type="button"
-          onClick={() => setRecordModalOpen(true)}
-          className="w-full py-3 rounded-lg bg-gradient-resonans text-white font-semibold text-[12px]"
-        >
-          기록하기
-        </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setRecordModalOpen(true)}
+            className="w-full py-3 rounded-lg bg-gradient-resonans text-white font-semibold text-[12px]"
+          >
+            기록하기(기본무료)
+          </button>
+
+          <PremiumReportCTA
+            nickname={lastRecordNickname}
+            participantAuthHash={participantAuthHash}
+            onParticipantAuthHashVerified={(hash) => {
+              setParticipantAuthHash(hash);
+              if (!lastRecordNickname.trim()) return;
+              try {
+                sessionStorage.setItem(`${PARTICIPANT_AUTH_HASH_PREFIX}:${lastRecordNickname.trim()}`, hash);
+              } catch {}
+            }}
+          />
+        </div>
       </section>
 
       {/* 감응 닉네임 (공동): 친구·연인과 공유해 같은 닉네임으로 실험 */}

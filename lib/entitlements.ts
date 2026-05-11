@@ -6,7 +6,7 @@ type ParticipantEntitlementGateRow = Pick<
   "enabled" | "expires_at"
 >;
 
-export type FeatureKey = "image_cut" | "comic_4panel";
+export type FeatureKey = "image_cut" | "comic_4panel" | "premium_report_download";
 
 export function normalizeNickname(nickname: string) {
   return (nickname ?? "").trim().toLowerCase();
