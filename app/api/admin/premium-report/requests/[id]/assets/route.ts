@@ -21,7 +21,7 @@ function toUploadAssetType(value: string): UploadAssetType | null {
 function isAllowedMime(assetType: UploadAssetType, mimeType: string) {
   const lower = mimeType.toLowerCase();
   if (assetType === "attachment_pdf") return lower === "application/pdf";
-  return lower === "image/png" || lower === "image/jpeg" || lower === "image/webp" || lower === "image/gif";
+  return lower === "image/png" || lower === "image/jpeg" || lower === "image/webp";
 }
 
 function inferMimeType(fileName: string, currentMimeType: string) {
@@ -62,7 +62,10 @@ export async function POST(
     return NextResponse.json({ error: "assetType, mimeType, base64가 필요합니다." }, { status: 400 });
   }
   if (!isAllowedMime(assetType, mimeType)) {
-    return NextResponse.json({ error: "허용되지 않는 파일 형식입니다." }, { status: 400 });
+    return NextResponse.json(
+      { error: assetType === "attachment_pdf" ? "PDF 파일만 업로드할 수 있습니다." : "이미지는 PNG, JPG, WEBP만 업로드할 수 있습니다." },
+      { status: 400 }
+    );
   }
   if (base64.startsWith("data:")) {
     const idx = base64.indexOf("base64,");

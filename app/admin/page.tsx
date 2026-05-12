@@ -257,6 +257,26 @@ function formatFileSize(bytes: number) {
   return `${bytes}B`;
 }
 
+function canApprovePremiumRequest(status: string, paymentStatus: string) {
+  return (status === "requested" || status === "paid_pending") && paymentStatus === "confirmed";
+}
+
+function canConfirmPremiumPayment(status: string, paymentStatus: string) {
+  return (status === "requested" || status === "paid_pending") && paymentStatus !== "confirmed";
+}
+
+function canStartPremiumRequest(status: string) {
+  return status === "approved" || status === "in_progress";
+}
+
+function canReleasePremiumRequest(status: string, paymentStatus: string) {
+  return (status === "approved" || status === "in_progress" || status === "ready") && paymentStatus === "confirmed";
+}
+
+function canRejectPremiumRequest(status: string) {
+  return status !== "rejected" && status !== "expired";
+}
+
 function getPremiumActionMeta(meta: unknown) {
   if (!meta || typeof meta !== "object" || Array.isArray(meta)) return {};
   return meta as Record<string, unknown>;
@@ -992,6 +1012,30 @@ export default function AdminPage() {
 
   const publishPremiumDocument = useCallback(async () => {
     if (!selectedPremiumRequestId) return;
+    const hasUnsavedDocChangesNow = premiumDocBaseline
+      ? normalizeDiffText(premiumDocTitle) !== normalizeDiffText(premiumDocBaseline.title) ||
+        normalizeDiffText(premiumDocSummary) !== normalizeDiffText(premiumDocBaseline.summary) ||
+        premiumDocPageCount !== premiumDocBaseline.pageCount ||
+        buildPremiumSectionDiffs(premiumDocSections, premiumDocBaseline.sections).length > 0
+      : false;
+    const hasUnsavedAssetDraftChangesNow = premiumDocBaseline
+      ? premiumDocAssets
+          .filter((asset) => asset.asset_type !== "final_pdf")
+          .some((asset) => {
+            const baselineDraft = premiumDocBaseline.assetDrafts[asset.id] ?? { title: "", description: "" };
+            const currentDraft = premiumAssetDrafts[asset.id] ?? { title: "", description: "" };
+            return (
+              normalizeDiffText(currentDraft.title) !== normalizeDiffText(baselineDraft.title) ||
+              normalizeDiffText(currentDraft.description) !== normalizeDiffText(baselineDraft.description)
+            );
+          })
+      : false;
+
+    if (hasUnsavedDocChangesNow || hasUnsavedAssetDraftChangesNow) {
+      setPremiumDocError("미저장 변경이 있습니다. 문서/설명 저장 후 다시 발행해 주세요.");
+      return;
+    }
+
     setPremiumDocPublishBusy(true);
     setPremiumDocError("");
     try {
@@ -1010,7 +1054,17 @@ export default function AdminPage() {
     } finally {
       setPremiumDocPublishBusy(false);
     }
-  }, [selectedPremiumRequestId, loadPremiumDocument]);
+  }, [
+    selectedPremiumRequestId,
+    premiumDocBaseline,
+    premiumDocTitle,
+    premiumDocSummary,
+    premiumDocPageCount,
+    premiumDocSections,
+    premiumDocAssets,
+    premiumAssetDrafts,
+    loadPremiumDocument,
+  ]);
 
   const uploadPremiumAsset = useCallback(async () => {
     if (!selectedPremiumRequestId || !premiumAssetFile) return;
@@ -2332,80 +2386,123 @@ export default function AdminPage() {
                   <p className="text-slate-500 text-xs">신청 내역이 없습니다.</p>
                 ) : (
                   <ul className="space-y-3">
-                    {premiumRequests.map((row) => (
-                      <li key={row.id} className="p-3 rounded-lg bg-slate-800/60 border border-slate-700 space-y-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-                          <span className="text-slate-300 font-medium">{row.nickname}</span>
-                          <span>상태 {row.status}</span>
-                          <span>결재 {row.payment_status}</span>
-                          <time>{new Date(row.requested_at).toLocaleString("ko-KR")}</time>
-                        </div>
-                        {row.admin_note && <p className="text-xs text-slate-500">메모: {row.admin_note}</p>}
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => loadPremiumDocument(row.id)}
-                            className="text-xs px-2 py-1 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25"
-                          >
-                            문서 편집
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updatePremiumRequestStatus(row.id, {
-                                status: "approved",
-                                paymentStatus: "confirmed",
-                                adminNote: "입금/결재 확인 완료",
-                              })
-                            }
-                            className="text-xs px-2 py-1 rounded bg-electric-blue/25 text-electric-blue border border-electric-blue/40 hover:bg-electric-blue/35"
-                          >
-                            승인
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updatePremiumRequestStatus(row.id, {
-                                status: "in_progress",
-                                paymentStatus: row.payment_status,
-                                adminNote: "보고서 작성 시작",
-                              })
-                            }
-                            className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600"
-                          >
-                            작성 시작
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updatePremiumRequestStatus(row.id, {
-                                status: "ready",
-                                paymentStatus: row.payment_status,
-                                downloadable: true,
-                                adminNote: "최종본 배포 허용",
-                              })
-                            }
-                            className="text-xs px-2 py-1 rounded bg-deep-violet/30 text-slate-200 hover:bg-deep-violet/40"
-                          >
-                            다운로드 허용
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updatePremiumRequestStatus(row.id, {
-                                status: "rejected",
-                                paymentStatus: row.payment_status,
-                                downloadable: false,
-                                adminNote: "관리자 반려",
-                              })
-                            }
-                            className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-red-500/20"
-                          >
-                            반려
-                          </button>
-                        </div>
-                      </li>
-                    ))}
+                    {premiumRequests.map((row) => {
+                      const isSelectedRequest = selectedPremiumRequestId === row.id;
+                      const hasPublishedPdfForSelected =
+                        isSelectedRequest &&
+                        premiumDocPdfStatus === "ready" &&
+                        premiumDocAssets.some((item) => item.asset_type === "final_pdf");
+                      const canConfirmPayment = canConfirmPremiumPayment(row.status, row.payment_status);
+                      const canApprove = canApprovePremiumRequest(row.status, row.payment_status);
+                      const canStart = canStartPremiumRequest(row.status);
+                      const canRelease =
+                        canReleasePremiumRequest(row.status, row.payment_status) &&
+                        (!isSelectedRequest || hasPublishedPdfForSelected);
+                      const canReject = canRejectPremiumRequest(row.status);
+
+                      return (
+                        <li key={row.id} className="p-3 rounded-lg bg-slate-800/60 border border-slate-700 space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                            <span className="text-slate-300 font-medium">{row.nickname}</span>
+                            <span>상태 {row.status}</span>
+                            <span>결재 {row.payment_status}</span>
+                            <time>{new Date(row.requested_at).toLocaleString("ko-KR")}</time>
+                          </div>
+                          {row.admin_note && <p className="text-xs text-slate-500">메모: {row.admin_note}</p>}
+                          <p className="text-[11px] text-slate-600">
+                            작성 시작은 승인 후에만 가능하고, 다운로드 허용은 결제 확인 + 최종 PDF 발행 후에만 가능합니다.
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => loadPremiumDocument(row.id)}
+                              className="text-xs px-2 py-1 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25"
+                            >
+                              문서 편집
+                            </button>
+                            <button
+                              type="button"
+                              disabled={premiumLoading || !canConfirmPayment}
+                              onClick={() =>
+                                updatePremiumRequestStatus(row.id, {
+                                  paymentStatus: "confirmed",
+                                  adminNote: "입금/결재 확인 완료",
+                                })
+                              }
+                              className="text-xs px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 disabled:opacity-40"
+                              title={canConfirmPayment ? "" : "신청 접수 단계에서만 결재 확인을 처리할 수 있습니다."}
+                            >
+                              결재 확인
+                            </button>
+                            <button
+                              type="button"
+                              disabled={premiumLoading || !canApprove}
+                              onClick={() =>
+                                updatePremiumRequestStatus(row.id, {
+                                  status: "approved",
+                                  paymentStatus: row.payment_status,
+                                  adminNote: "승인 완료",
+                                })
+                              }
+                              className="text-xs px-2 py-1 rounded bg-electric-blue/25 text-electric-blue border border-electric-blue/40 hover:bg-electric-blue/35 disabled:opacity-40"
+                              title={canApprove ? "" : "결제 확인 완료 상태에서만 승인할 수 있습니다."}
+                            >
+                              승인
+                            </button>
+                            <button
+                              type="button"
+                              disabled={premiumLoading || !canStart}
+                              onClick={() =>
+                                updatePremiumRequestStatus(row.id, {
+                                  status: "in_progress",
+                                  paymentStatus: row.payment_status,
+                                  adminNote: "보고서 작성 시작",
+                                })
+                              }
+                              className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 disabled:opacity-40"
+                              title={canStart ? "" : "승인 완료 후에만 작성 시작할 수 있습니다."}
+                            >
+                              작성 시작
+                            </button>
+                            <button
+                              type="button"
+                              disabled={premiumLoading || !canRelease}
+                              onClick={() =>
+                                updatePremiumRequestStatus(row.id, {
+                                  status: "ready",
+                                  paymentStatus: row.payment_status,
+                                  downloadable: true,
+                                  adminNote: "최종본 배포 허용",
+                                })
+                              }
+                              className="text-xs px-2 py-1 rounded bg-deep-violet/30 text-slate-200 hover:bg-deep-violet/40 disabled:opacity-40"
+                              title={
+                                canRelease
+                                  ? ""
+                                  : "결제 확인과 최종 PDF 발행이 끝난 뒤에만 다운로드를 허용할 수 있습니다."
+                              }
+                            >
+                              다운로드 허용
+                            </button>
+                            <button
+                              type="button"
+                              disabled={premiumLoading || !canReject}
+                              onClick={() =>
+                                updatePremiumRequestStatus(row.id, {
+                                  status: "rejected",
+                                  paymentStatus: row.payment_status,
+                                  downloadable: false,
+                                  adminNote: "관리자 반려",
+                                })
+                              }
+                              className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-red-500/20 disabled:opacity-40"
+                            >
+                              반려
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </section>

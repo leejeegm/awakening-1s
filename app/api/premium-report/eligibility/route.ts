@@ -73,8 +73,13 @@ export async function GET(request: NextRequest) {
   const qualifies =
     weeklyDayCounts.length === PREMIUM_REPORT_REQUIRED_WEEKS &&
     weeklyDayCounts.every((row) => row.qualifies);
-  const consecutiveWeeks = weeklyDayCounts.filter((row) => row.qualifies).length;
-  const qualifiesFromWeek = qualifies ? weeklyDayCounts[0]?.week ?? null : null;
+  let consecutiveWeeks = 0;
+  for (let i = weeklyDayCounts.length - 1; i >= 0; i--) {
+    if (!weeklyDayCounts[i]?.qualifies) break;
+    consecutiveWeeks += 1;
+  }
+  const qualifiesFromWeek =
+    consecutiveWeeks > 0 ? weeklyDayCounts[weeklyDayCounts.length - consecutiveWeeks]?.week ?? null : null;
 
   await admin.from("premium_report_eligibility_snapshots").upsert({
     nickname,

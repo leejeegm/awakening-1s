@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
   if (!gate.ok) {
     return NextResponse.json(
       {
-        error: "서버 생성 기능은 유료/관리자 승인 후 사용 가능합니다.",
+        error: "서버 생성 기능은 유료/관리자 승인 후 사용 가능합니다. 관리자 메뉴 > 기능 승인(유료) 토글에서 승인 후 다시 시도해 주세요.",
         reason: gate.reason,
       },
       { status: 402 }

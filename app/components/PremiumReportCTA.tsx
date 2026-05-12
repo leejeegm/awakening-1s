@@ -35,12 +35,23 @@ async function sha256Hex(text: string): Promise<string> {
 
 function statusLabel(item: RequestItem) {
   if (item.status === "ready" && item.downloadable) return "다운로드 가능";
+  if (item.status === "ready") return "발행 완료";
   if (item.status === "in_progress") return "작성 중";
   if (item.status === "approved") return "승인 완료";
   if (item.status === "paid_pending" || item.payment_status === "pending_manual_check") return "결재 확인 중";
   if (item.status === "requested") return "신청 접수";
   if (item.status === "rejected") return "반려";
+  if (item.status === "expired") return "만료";
   return item.status;
+}
+
+function paymentStatusLabel(item: RequestItem) {
+  if (item.payment_status === "confirmed") return "결재 확인 완료";
+  if (item.payment_status === "pending_manual_check") return "결재 확인 대기";
+  if (item.payment_status === "failed") return "결재 실패";
+  if (item.payment_status === "refunded") return "환불 완료";
+  if (item.payment_status === "unpaid") return "미결재";
+  return item.payment_status;
 }
 
 export default function PremiumReportCTA({
@@ -62,6 +73,8 @@ export default function PremiumReportCTA({
 
   const trimmedNickname = nickname.trim();
   const latestRequest = requests[0] ?? null;
+  const canSubmitNewRequest =
+    !!eligibility?.qualifies && (!latestRequest || latestRequest.status === "rejected" || latestRequest.status === "expired");
 
   const loadState = useCallback(async () => {
     if (!trimmedNickname || !participantAuthHash) return;
@@ -143,7 +156,7 @@ export default function PremiumReportCTA({
 
       onParticipantAuthHashVerified?.(hash);
       setPassword("");
-      setRequestMessage("인증되었습니다. 자격과 신청 상태를 확인합니다.");
+      setRequestMessage("인증되었습니다. 아래에서 신청 및 결재 확인으로 현재 상태를 다시 확인할 수 있습니다.");
     } finally {
       setAuthLoading(false);
     }
@@ -216,7 +229,10 @@ export default function PremiumReportCTA({
           {trimmedNickname && !participantAuthHash && (
             <div className="space-y-2">
               <p className="text-xs text-slate-400">
-                유료 보고서 자격과 신청 상태를 확인하려면 닉네임 비밀번호 인증이 필요합니다.
+                유료 보고서 자격과 신청/결재 상태를 확인하려면 닉네임 비밀번호 인증이 필요합니다.
+              </p>
+              <p className="text-[11px] text-slate-500">
+                이미 「내 자각 실험 결과 보기」에서 비밀번호 조회를 마쳤다면, 이 창에서도 바로 상태 확인이 이어집니다.
               </p>
               <div className="flex flex-wrap gap-2">
                 <input
@@ -240,8 +256,18 @@ export default function PremiumReportCTA({
 
           {participantAuthHash && (
             <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={loadState}
+                  disabled={eligibilityLoading || requestsLoading}
+                  className="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs font-medium hover:bg-slate-700 disabled:opacity-50"
+                >
+                  {eligibilityLoading || requestsLoading ? "확인 중..." : "신청 및 결재 확인"}
+                </button>
+              </div>
               {(eligibilityLoading || requestsLoading) && (
-                <p className="text-xs text-slate-500">유료 보고서 자격과 신청 상태를 확인하는 중...</p>
+                <p className="text-xs text-slate-500">유료 보고서 자격과 신청/결재 상태를 확인하는 중...</p>
               )}
 
               {eligibility && (
@@ -266,23 +292,31 @@ export default function PremiumReportCTA({
 
               {latestRequest && (
                 <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3 space-y-1">
-                  <p className="text-xs text-slate-500">현재 신청 상태</p>
-                  <p className="text-sm text-slate-200">{statusLabel(latestRequest)}</p>
+                  <p className="text-xs text-slate-500">현재 신청/결재 상태</p>
+                  <p className="text-sm text-slate-200">신청: {statusLabel(latestRequest)}</p>
+                  <p className="text-sm text-slate-300">결재: {paymentStatusLabel(latestRequest)}</p>
                   <p className="text-[11px] text-slate-500">
                     최근 업데이트: {new Date(latestRequest.updated_at).toLocaleString("ko-KR")}
                   </p>
                 </div>
               )}
 
-              {!latestRequest && eligibility?.qualifies && (
-                <button
-                  type="button"
-                  onClick={submitRequest}
-                  disabled={requestBusy}
-                  className="w-full px-3 py-2 rounded-lg bg-deep-violet/80 text-white text-sm font-medium hover:bg-deep-violet disabled:opacity-50"
-                >
-                  {requestBusy ? "신청 중..." : "유료 보고서 신청하기"}
-                </button>
+              {canSubmitNewRequest && (
+                <div className="space-y-2">
+                  {latestRequest && (latestRequest.status === "rejected" || latestRequest.status === "expired") && (
+                    <p className="text-[11px] text-slate-500">
+                      이전 신청이 {latestRequest.status === "rejected" ? "반려" : "만료"}되어 다시 신청할 수 있습니다.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={submitRequest}
+                    disabled={requestBusy}
+                    className="w-full px-3 py-2 rounded-lg bg-deep-violet/80 text-white text-sm font-medium hover:bg-deep-violet disabled:opacity-50"
+                  >
+                    {requestBusy ? "신청 중..." : latestRequest ? "유료 보고서 다시 신청하기" : "유료 보고서 신청하기"}
+                  </button>
+                </div>
               )}
 
               {latestRequest?.status === "ready" && latestRequest.downloadable && (
