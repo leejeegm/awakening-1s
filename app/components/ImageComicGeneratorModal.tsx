@@ -793,6 +793,28 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
     () => isSameComfyNodeTargets(comfyNodeTargets, comfyRecommendedNodeTargets),
     [comfyNodeTargets, comfyRecommendedNodeTargets]
   );
+  const comfyStatusBadge = useMemo(() => {
+    if (mode !== "local" || localEnginePreset !== "comfyui") return null;
+    if (comfyWorkflowJsonError) {
+      return {
+        label: "ComfyUI 설정 오류",
+        detail: "JSON 확인 필요",
+        className: "bg-red-500/15 text-red-300 border-red-500/30",
+      };
+    }
+    if (comfyWorkflowWarnings.length > 0) {
+      return {
+        label: "ComfyUI 설정 주의",
+        detail: `${comfyWorkflowWarnings.length}개 경고`,
+        className: "bg-amber-500/15 text-amber-200 border-amber-500/30",
+      };
+    }
+    return {
+      label: "ComfyUI 설정 정상",
+      detail: "생성 가능",
+      className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+    };
+  }, [mode, localEnginePreset, comfyWorkflowJsonError, comfyWorkflowWarnings]);
 
   useEffect(() => {
     if (!open) return;
@@ -2042,6 +2064,11 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
             >
               {busy ? "생성 중..." : "생성하기"}
             </button>
+            {comfyStatusBadge && (
+              <span className={`rounded-full border px-2.5 py-1 text-[11px] ${comfyStatusBadge.className}`}>
+                {comfyStatusBadge.label} · {comfyStatusBadge.detail}
+              </span>
+            )}
             {error && <span className="text-xs text-red-400 break-words">{error}</span>}
           </div>
           {cacheHit && mode === "server" && (
