@@ -99,6 +99,19 @@ type PremiumReportProductRow = {
   updated_at: string;
 };
 
+type PremiumEligListItem = {
+  requestId: string;
+  nickname: string;
+  status: string;
+  payment_status: string;
+  requested_at: string;
+  updated_at: string;
+  qualifies: boolean | null;
+  qualifiesWeekly: boolean | null;
+  qualifiesRolling: boolean | null;
+  eligibilityEvaluatedAt: string | null;
+};
+
 type PremiumEligibilityCheckResult = {
   nickname?: string;
   canApplyPremiumReport?: boolean;
@@ -611,6 +624,10 @@ export default function AdminPage() {
   const [eligCheckLoading, setEligCheckLoading] = useState(false);
   const [eligCheckError, setEligCheckError] = useState("");
   const [eligCheckResult, setEligCheckResult] = useState<PremiumEligibilityCheckResult | null>(null);
+  const [eligRequestList, setEligRequestList] = useState<PremiumEligListItem[]>([]);
+  const [eligListLoading, setEligListLoading] = useState(false);
+  const [selectedEligRequestId, setSelectedEligRequestId] = useState<string | null>(null);
+  const [premiumCoverInputKey, setPremiumCoverInputKey] = useState(0);
   const [selectedPremiumRequestId, setSelectedPremiumRequestId] = useState<string | null>(null);
   const [premiumDocLoading, setPremiumDocLoading] = useState(false);
   const [premiumDocError, setPremiumDocError] = useState("");
@@ -812,8 +829,28 @@ export default function AdminPage() {
     }
   }, [entNick]);
 
-  const loadPremiumEligibilityCheck = useCallback(async () => {
-    const nick = eligCheckNick.trim();
+  const loadPremiumEligibilityList = useCallback(async () => {
+    setEligListLoading(true);
+    setEligCheckError("");
+    try {
+      const res = await fetch("/api/admin/premium-report/eligibility/list");
+      const json = (await res.json().catch(() => ({}))) as { items?: PremiumEligListItem[]; error?: string };
+      if (!res.ok) {
+        setEligCheckError(json.error ?? "신청 목록을 불러오지 못했습니다.");
+        setEligRequestList([]);
+        return;
+      }
+      setEligRequestList(Array.isArray(json.items) ? json.items : []);
+    } catch {
+      setEligCheckError("네트워크 오류");
+      setEligRequestList([]);
+    } finally {
+      setEligListLoading(false);
+    }
+  }, []);
+
+  const loadPremiumEligibilityCheck = useCallback(async (nicknameOverride?: string) => {
+    const nick = (nicknameOverride ?? eligCheckNick).trim();
     if (!nick) {
       setEligCheckError("닉네임을 입력하세요.");
       setEligCheckResult(null);
@@ -836,6 +873,15 @@ export default function AdminPage() {
       setEligCheckLoading(false);
     }
   }, [eligCheckNick]);
+
+  const selectEligibilityListItem = useCallback(
+    (item: PremiumEligListItem) => {
+      setSelectedEligRequestId(item.requestId);
+      setEligCheckNick(item.nickname);
+      void loadPremiumEligibilityCheck(item.nickname);
+    },
+    [loadPremiumEligibilityCheck]
+  );
 
   const loadPremiumReports = useCallback(async () => {
     setPremiumLoading(true);
@@ -1321,6 +1367,65 @@ export default function AdminPage() {
     selectedPremiumRequestId,
   ]);
 
+  const uploadPremiumCoverImage = useCallback(
+    async (file: File, replaceAssetId?: string | null) => {
+      if (!selectedPremiumRequestId) {
+        setPremiumDocError("먼저 유료 보고서 신청 건을 선택해 주세요.");
+        return;
+      }
+      setPremiumAssetBusy(true);
+      setPremiumDocError("");
+      try {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === "string") resolve(reader.result);
+            else reject(new Error("파일을 읽을 수 없습니다."));
+          };
+          reader.onerror = () => reject(new Error("파일 읽기 중 오류"));
+          reader.readAsDataURL(file);
+        });
+
+        const res = await fetch(`/api/admin/premium-report/requests/${selectedPremiumRequestId}/assets`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            assetType: "attachment_image",
+            fileName: file.name,
+            mimeType: file.type,
+            base64,
+          }),
+        });
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; asset?: { id?: string } };
+        if (!res.ok || !json.ok) {
+          setPremiumDocError(json.error ?? "대표 이미지 업로드 실패");
+          return;
+        }
+        const newAssetId = json.asset?.id;
+        if (newAssetId) {
+          await updatePremiumAssetMeta(newAssetId, { isCover: true });
+        }
+        if (replaceAssetId && replaceAssetId !== newAssetId) {
+          const delRes = await fetch(
+            `/api/admin/premium-report/requests/${selectedPremiumRequestId}/assets/${replaceAssetId}`,
+            { method: "DELETE" }
+          );
+          const delJson = (await delRes.json().catch(() => ({}))) as { ok?: boolean };
+          if (!delRes.ok || !delJson.ok) {
+            setPremiumDocError("새 이미지는 등록됐으나 이전 대표 이미지 삭제에 실패했습니다.");
+          }
+        }
+        setPremiumCoverInputKey((prev) => prev + 1);
+        await loadPremiumDocument(selectedPremiumRequestId);
+      } catch (error) {
+        setPremiumDocError(error instanceof Error ? error.message : "네트워크 오류");
+      } finally {
+        setPremiumAssetBusy(false);
+      }
+    },
+    [selectedPremiumRequestId, loadPremiumDocument, updatePremiumAssetMeta]
+  );
+
   const deletePremiumAsset = useCallback(
     async (assetId: string) => {
       if (!selectedPremiumRequestId) return;
@@ -1470,8 +1575,9 @@ export default function AdminPage() {
     if (loggedIn === true && tab === "premium_eligibility") {
       setEligCheckResult(null);
       setEligCheckError("");
+      loadPremiumEligibilityList();
     }
-  }, [loggedIn, tab, loadPremiumReports]);
+  }, [loggedIn, tab, loadPremiumReports, loadPremiumEligibilityList]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("이 기록을 삭제하시겠습니까?")) return;
@@ -2372,31 +2478,76 @@ export default function AdminPage() {
         {tab === "premium_eligibility" && (
           <>
             <p className="text-xs text-slate-500 mb-3">
-              닉네임별 유료 보고서 자격을 조회합니다. 기본: 매주 3일×4주. 테스트·완화: 조회 시점 기준 최근 28일 총 기록 12회 이상이면
-              신청 가능(qualifies)으로 처리됩니다. participant_keys 등록 여부와 최근 신청·결재 상태도 함께 표시됩니다.
+              유료 신청 목록(신청일시 최신순)에서 닉네임을 선택하거나 직접 입력해 자격·인증을 확인합니다. 기본: 매주 3일×4주 ·
+              테스트: 최근 28일 12회 이상.
             </p>
-            <div className="flex flex-wrap gap-2 items-end mb-4">
-              <label className="flex flex-col gap-0.5">
-                <span className="text-[11px] text-slate-400">닉네임</span>
-                <input
-                  type="text"
-                  value={eligCheckNick}
-                  onChange={(e) => setEligCheckNick(e.target.value)}
-                  placeholder="조회할 닉네임"
-                  className="rounded-lg bg-slate-900 border border-slate-600 text-slate-200 text-sm px-3 py-2 w-48"
-                  maxLength={20}
-                />
-              </label>
+            <div className="flex flex-wrap gap-2 items-center mb-3">
               <button
                 type="button"
-                onClick={loadPremiumEligibilityCheck}
-                disabled={eligCheckLoading}
-                className="px-3 py-2 rounded-lg bg-electric-blue/80 text-white text-sm font-medium hover:bg-electric-blue disabled:opacity-50"
+                onClick={loadPremiumEligibilityList}
+                disabled={eligListLoading}
+                className="px-3 py-2 rounded-lg bg-slate-700 text-slate-200 text-sm hover:bg-slate-600 disabled:opacity-50"
               >
-                {eligCheckLoading ? "조회 중..." : "자격·인증 확인"}
+                {eligListLoading ? "목록 불러오는 중..." : "신청 목록 새로고침"}
               </button>
               {eligCheckError && <span className="text-xs text-red-400">{eligCheckError}</span>}
             </div>
+            <div className="grid lg:grid-cols-[minmax(220px,280px)_1fr] gap-4 mb-4">
+              <div className="rounded-lg border border-slate-700 bg-slate-900/50 max-h-[420px] overflow-y-auto">
+                <p className="sticky top-0 z-10 bg-slate-900/95 px-3 py-2 text-[11px] text-slate-400 border-b border-slate-700">
+                  신청 목록 · 신청일시 순
+                </p>
+                {eligListLoading && eligRequestList.length === 0 ? (
+                  <p className="p-3 text-xs text-slate-500">불러오는 중...</p>
+                ) : eligRequestList.length === 0 ? (
+                  <p className="p-3 text-xs text-slate-500">유료 신청 내역이 없습니다.</p>
+                ) : (
+                  <ul className="divide-y divide-slate-800">
+                    {eligRequestList.map((item) => (
+                      <li key={item.requestId}>
+                        <button
+                          type="button"
+                          onClick={() => selectEligibilityListItem(item)}
+                          className={`w-full text-left px-3 py-2.5 hover:bg-slate-800/80 transition ${
+                            selectedEligRequestId === item.requestId ? "bg-electric-blue/15" : ""
+                          }`}
+                        >
+                          <p className="text-sm font-medium text-slate-200">{item.nickname}</p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            {new Date(item.requested_at).toLocaleString("ko-KR")}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {item.status} · {item.payment_status}
+                            {item.qualifies === true ? " · 자격 충족" : item.qualifies === false ? " · 자격 미충족" : ""}
+                          </p>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2 items-end">
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-[11px] text-slate-400">조회할 닉네임</span>
+                    <input
+                      type="text"
+                      value={eligCheckNick}
+                      onChange={(e) => setEligCheckNick(e.target.value)}
+                      placeholder="닉네임 입력"
+                      className="rounded-lg bg-slate-900 border border-slate-600 text-slate-200 text-sm px-3 py-2 w-48"
+                      maxLength={20}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void loadPremiumEligibilityCheck()}
+                    disabled={eligCheckLoading}
+                    className="px-3 py-2 rounded-lg bg-electric-blue/80 text-white text-sm font-medium hover:bg-electric-blue disabled:opacity-50"
+                  >
+                    {eligCheckLoading ? "조회 중..." : "자격·인증 확인"}
+                  </button>
+                </div>
             {eligCheckResult && (
               <div className="space-y-4">
                 <div className="p-3 rounded-lg border border-slate-700 bg-slate-800/60 space-y-2">
@@ -2470,6 +2621,8 @@ export default function AdminPage() {
                 )}
               </div>
             )}
+              </div>
+            </div>
           </>
         )}
         {tab === "premium_reports" && (
@@ -3213,7 +3366,48 @@ export default function AdminPage() {
                               </div>
                             </div>
                           ) : (
-                            <p className="mt-2 text-[11px] text-slate-500">대표 이미지가 아직 없습니다. 이미지를 업로드하고 대표 지정하면 첫 장에 반영됩니다.</p>
+                            <div className="mt-2 space-y-2">
+                              <p className="text-[11px] text-slate-500">대표 이미지가 아직 없습니다. PNG/JPG/WEBP로 등록하면 PDF 첫 장에 반영됩니다.</p>
+                              <label className="inline-flex items-center gap-2">
+                                <input
+                                  key={premiumCoverInputKey}
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/webp"
+                                  disabled={premiumAssetBusy || !selectedPremiumRequestId}
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) void uploadPremiumCoverImage(file);
+                                  }}
+                                  className="text-[11px] text-slate-400 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:px-2 file:py-1 file:text-slate-200"
+                                />
+                              </label>
+                            </div>
+                          )}
+                          {premiumPreviewCoverAsset && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <label className="inline-flex cursor-pointer items-center gap-2 text-[11px] px-2 py-1 rounded bg-slate-700 text-slate-200 hover:bg-slate-600">
+                                이미지 교체
+                                <input
+                                  key={`replace-${premiumCoverInputKey}`}
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/webp"
+                                  className="hidden"
+                                  disabled={premiumAssetBusy}
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) void uploadPremiumCoverImage(file, premiumPreviewCoverAsset.id);
+                                  }}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                disabled={premiumAssetActionBusyId === premiumPreviewCoverAsset.id}
+                                onClick={() => deletePremiumAsset(premiumPreviewCoverAsset.id)}
+                                className="text-[11px] px-2 py-1 rounded bg-red-500/15 text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+                              >
+                                대표 이미지 삭제
+                              </button>
+                            </div>
                           )}
                         </div>
 
@@ -3875,10 +4069,19 @@ export default function AdminPage() {
                         </ul>
                       )}
 
-                      <p className="text-[11px] text-slate-400 mb-2">소스 스냅샷</p>
-                      <pre className="text-[11px] text-slate-500 whitespace-pre-wrap break-words">
-                        {premiumDocSnapshot ? JSON.stringify(premiumDocSnapshot, null, 2) : "스냅샷 없음"}
-                      </pre>
+                      <details className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                        <summary className="text-[11px] text-slate-400 cursor-pointer select-none">
+                          소스 스냅샷 (자동 수집 데이터 · 용도 안내)
+                        </summary>
+                        <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
+                          문서 저장 시 해당 닉네임의 최근 자각 기록·AI 멘트·주별 통계를 JSON으로 고정해 둔 참고 자료입니다. PDF에
+                          그대로 인쇄되지는 않으며, 초안 자동 생성·검수·이후 수정 비교 시 「당시 어떤 데이터로 썼는지」를
+                          확인하는 용도입니다. 아래 「발행 자산」에서 업로드한 이미지·PDF만 최종 발행물에 포함됩니다.
+                        </p>
+                        <pre className="mt-2 text-[10px] text-slate-600 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+                          {premiumDocSnapshot ? JSON.stringify(premiumDocSnapshot, null, 2) : "스냅샷 없음 (문서 저장 후 생성)"}
+                        </pre>
+                      </details>
                     </div>
                   </div>
                 )}

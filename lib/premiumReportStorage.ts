@@ -10,6 +10,21 @@ function sanitizeExt(ext: string) {
   return ext.replace(/[^a-z0-9]/gi, "").toLowerCase() || "bin";
 }
 
+/** Supabase Storage 키용 — 한글·특수문자 닉네임을 ASCII 안전 경로로 변환 */
+export function sanitizeStorageSegment(value: string, fallbackPrefix = "user"): string {
+  const trimmed = (value ?? "").trim();
+  const ascii = trimmed
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (ascii.length >= 2) return ascii.slice(0, 48);
+  const hash = crypto.createHash("sha256").update(trimmed || fallbackPrefix).digest("hex").slice(0, 16);
+  return `${fallbackPrefix}-${hash}`;
+}
+
 function extFromMimeType(mimeType: string) {
   const lower = mimeType.toLowerCase();
   if (lower === "application/pdf") return "pdf";
@@ -34,7 +49,7 @@ export async function uploadPremiumReportBinary(params: {
   const bucket = getPremiumReportBucket();
   await ensureBucketExists(bucket);
 
-  const nickname = (params.nickname ?? "").trim().toLowerCase();
+  const nickname = sanitizeStorageSegment(params.nickname ?? "", "user");
   const requestId = (params.requestId ?? "").trim();
   const assetType = (params.assetType ?? "").trim().toLowerCase();
   if (!nickname || !requestId || !assetType) {
@@ -71,7 +86,7 @@ export async function uploadPremiumReportPdf(params: {
   const bucket = getPremiumReportBucket();
   await ensureBucketExists(bucket);
 
-  const nickname = (params.nickname ?? "").trim().toLowerCase();
+  const nickname = sanitizeStorageSegment(params.nickname ?? "", "user");
   const requestId = (params.requestId ?? "").trim();
   if (!nickname || !requestId) {
     return { ok: false, error: "닉네임 또는 요청 ID가 비어 있습니다." };

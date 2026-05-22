@@ -66,9 +66,15 @@ function paymentStatusLabel(item: RequestItem) {
   return item.payment_status;
 }
 
-function buildPaymentProgressGuide(item: RequestItem | null): string {
+function buildPaymentProgressGuide(item: RequestItem | null, qualifies?: boolean): string {
   if (!item) {
-    return "유료 보고서 신청 내역이 없습니다. 자격 요건을 충족한 뒤 「유료 보고서 신청하기」로 신청할 수 있습니다.";
+    if (qualifies === true) {
+      return "유료 보고서 신청 내역이 없습니다. 아래 「유료 보고서 신청하기」로 신청할 수 있습니다.";
+    }
+    if (qualifies === false) {
+      return "유료 보고서 신청 내역이 없습니다. 자격 요건을 충족하면 아래에서 신청할 수 있습니다.";
+    }
+    return "유료 보고서 신청 내역이 없습니다. 「신청 및 결재 확인」을 누른 뒤 자격과 신청 버튼 상태를 확인해 주세요.";
   }
   if (item.status === "ready" && item.downloadable) {
     return "보고서가 준비되었습니다. 아래 「나의 자깨 감응 보고서 다운로드」로 받을 수 있습니다.";
@@ -128,7 +134,7 @@ function buildConfirmSummary(
       parts.push(`안내: ${eligibility.message}`);
     }
   }
-  parts.push(`결재·진행: ${buildPaymentProgressGuide(latestRequest)}`);
+  parts.push(`결재·진행: ${buildPaymentProgressGuide(latestRequest, eligibility?.qualifies)}`);
   if (latestRequest) {
     parts.push(
       `상세 — 신청 ${statusLabel(latestRequest)}, 결재 ${paymentStatusLabel(latestRequest)} (${new Date(latestRequest.updated_at).toLocaleString("ko-KR")} 갱신)`
@@ -158,9 +164,23 @@ export default function PremiumReportCTA({
   const trimmedNickname = nickname.trim();
   const isAuthenticated = !!participantAuthHash.trim();
   const latestRequest = requests[0] ?? null;
-  const canSubmitNewRequest =
-    !!eligibility?.qualifies && (!latestRequest || latestRequest.status === "rejected" || latestRequest.status === "expired");
+  const hasActiveRequest =
+    !!latestRequest &&
+    latestRequest.status !== "rejected" &&
+    latestRequest.status !== "expired";
+  const canSubmitNewRequest = !!eligibility?.qualifies && !hasActiveRequest;
   const isChecking = eligibilityLoading || requestsLoading;
+
+  const applyBlockReason = (() => {
+    if (!eligibility) return "먼저 「신청 및 결재 확인」을 눌러 자격을 확인해 주세요.";
+    if (!eligibility.qualifies) {
+      return "아직 신청 자격이 없습니다. 위 「자격 요건」을 충족하면 신청할 수 있습니다.";
+    }
+    if (hasActiveRequest) {
+      return "진행 중인 신청이 있습니다. 결재·진행 상태를 확인해 주세요.";
+    }
+    return null;
+  })();
 
   const loadState = useCallback(
     async (authHashOverride?: string): Promise<boolean> => {
@@ -532,27 +552,43 @@ export default function PremiumReportCTA({
                     </p>
                   </>
                 ) : (
-                  <p className="text-[12px] text-slate-400 leading-relaxed">{buildPaymentProgressGuide(null)}</p>
+                  <p className="text-[12px] text-slate-400 leading-relaxed">
+                    {buildPaymentProgressGuide(null, eligibility?.qualifies)}
+                  </p>
                 )}
               </div>
 
-              {canSubmitNewRequest && (
-                <div className="space-y-2">
-                  {latestRequest && (latestRequest.status === "rejected" || latestRequest.status === "expired") && (
-                    <p className="text-[12px] text-slate-500">
-                      이전 신청이 {latestRequest.status === "rejected" ? "반려" : "만료"}되어 다시 신청할 수 있습니다.
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={submitRequest}
-                    disabled={requestBusy}
-                    className="w-full px-3 py-2 rounded-lg bg-deep-violet/80 text-white text-[12px] font-medium hover:bg-deep-violet disabled:opacity-50"
-                  >
-                    {requestBusy ? "신청 중..." : latestRequest ? "유료 보고서 다시 신청하기" : "유료 보고서 신청하기"}
-                  </button>
-                </div>
-              )}
+              <div className="space-y-2">
+                {applyBlockReason && (
+                  <p className="text-[12px] text-amber-200/90 leading-relaxed">{applyBlockReason}</p>
+                )}
+                {latestRequest && (latestRequest.status === "rejected" || latestRequest.status === "expired") && (
+                  <p className="text-[12px] text-slate-500">
+                    이전 신청이 {latestRequest.status === "rejected" ? "반려" : "만료"}되어 다시 신청할 수 있습니다.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!eligibility) {
+                      void handleConfirmClick();
+                      return;
+                    }
+                    if (!canSubmitNewRequest) return;
+                    void submitRequest();
+                  }}
+                  disabled={requestBusy || (!!eligibility && !canSubmitNewRequest)}
+                  className="w-full px-3 py-2 rounded-lg bg-deep-violet/80 text-white text-[12px] font-medium hover:bg-deep-violet disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {requestBusy
+                    ? "신청 중..."
+                    : !eligibility
+                      ? "자격 확인 후 신청하기"
+                      : latestRequest && (latestRequest.status === "rejected" || latestRequest.status === "expired")
+                        ? "유료 보고서 다시 신청하기"
+                        : "유료 보고서 신청하기"}
+                </button>
+              </div>
 
               {latestRequest?.status === "ready" && latestRequest.downloadable && (
                 <button
