@@ -275,14 +275,18 @@ export async function GET(request: NextRequest) {
   if (download && canDownload) {
     try {
       const { jsPDF } = await import("jspdf");
+      const { registerKoreanPdfFonts, setKoreanPdfFont } = await import("@/lib/jspdfKoreanFont");
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      registerKoreanPdfFonts(doc);
       const pageW = doc.internal.pageSize.getWidth();
       let y = 20;
       const lineH = 7;
 
+      setKoreanPdfFont(doc, "bold");
       doc.setFontSize(16);
       doc.text("주간 감응 보고서", 20, y);
       y += lineH * 2;
+      setKoreanPdfFont(doc, "normal");
       doc.setFontSize(11);
       doc.text(`주간: ${label}`, 20, y);
       y += lineH;

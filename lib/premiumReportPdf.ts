@@ -1,3 +1,5 @@
+import { registerKoreanPdfFonts, setKoreanPdfFont } from "@/lib/jspdfKoreanFont";
+
 type PremiumReportSection = {
   key?: string;
   title?: string;
@@ -53,7 +55,7 @@ function drawPageFooter(doc: PdfDoc, pageNum: number, totalHint: number, margin:
   doc.setDrawColor(...COLORS.mist);
   doc.setLineWidth(0.2);
   doc.line(margin, pageH - 14, pageW - margin, pageH - 14);
-  doc.setFont("helvetica", "normal");
+  setKoreanPdfFont(doc, "normal");
   doc.setFontSize(8);
   doc.setTextColor(...COLORS.mist);
   doc.text("나의 자깨 감응 보고서 · Resonans", margin, pageH - 8);
@@ -63,7 +65,7 @@ function drawPageFooter(doc: PdfDoc, pageNum: number, totalHint: number, margin:
 function drawSectionTitle(doc: PdfDoc, title: string, margin: number, y: number, contentW: number) {
   doc.setFillColor(...COLORS.deepViolet);
   doc.rect(margin, y - 1, 3, 8, "F");
-  doc.setFont("helvetica", "bold");
+  setKoreanPdfFont(doc, "bold");
   doc.setFontSize(13);
   doc.setTextColor(...COLORS.ink);
   doc.text(title, margin + 6, y + 5);
@@ -76,6 +78,7 @@ function drawSectionTitle(doc: PdfDoc, title: string, margin: number, y: number,
 export async function buildPremiumReportPdfBuffer(args: PremiumReportPdfArgs) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  registerKoreanPdfFonts(doc);
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 16;
@@ -99,7 +102,7 @@ export async function buildPremiumReportPdfBuffer(args: PremiumReportPdfArgs) {
 
   const addBodyText = (text: string, size = 10.5, color: [number, number, number] = COLORS.slate) => {
     if (!text.trim()) return;
-    doc.setFont("helvetica", "normal");
+    setKoreanPdfFont(doc, "normal");
     doc.setFontSize(size);
     doc.setTextColor(...color);
     const lines = doc.splitTextToSize(text, contentW);
@@ -109,7 +112,7 @@ export async function buildPremiumReportPdfBuffer(args: PremiumReportPdfArgs) {
   };
 
   const addImageBlock = (asset: PremiumReportImageAsset, maxHeight: number) => {
-    doc.setFont("helvetica", "bold");
+    setKoreanPdfFont(doc, "bold");
     doc.setFontSize(10);
     doc.setTextColor(...COLORS.ink);
     const caption = asset.title?.trim() || asset.originalName?.trim() || "시각 자료";
@@ -145,19 +148,19 @@ export async function buildPremiumReportPdfBuffer(args: PremiumReportPdfArgs) {
   doc.setFillColor(...COLORS.electricBlue);
   doc.rect(0, 48, pageW, 4, "F");
 
-  doc.setFont("helvetica", "normal");
+  setKoreanPdfFont(doc, "normal");
   doc.setFontSize(9);
   doc.setTextColor(220, 225, 255);
   doc.text("PREMIUM AWAKENING RESONANCE REPORT", margin, 18);
 
-  doc.setFont("helvetica", "bold");
+  setKoreanPdfFont(doc, "bold");
   doc.setFontSize(20);
   doc.setTextColor(255, 255, 255);
   const titleLines = doc.splitTextToSize(args.title || "나의 자깨 감응 보고서", contentW);
   doc.text(titleLines, margin, 30);
 
   y = 62;
-  doc.setFont("helvetica", "normal");
+  setKoreanPdfFont(doc, "normal");
   doc.setFontSize(11);
   doc.setTextColor(...COLORS.ink);
   doc.text(`닉네임  ${args.nickname}`, margin, y);
@@ -185,7 +188,7 @@ export async function buildPremiumReportPdfBuffer(args: PremiumReportPdfArgs) {
     const boxH = Math.max(28, lineH * summaryLines.length + 10);
     ensureSpace(boxH + 4);
     doc.roundedRect(margin, y - 2, contentW, boxH, 3, 3, "F");
-    doc.setFont("helvetica", "normal");
+    setKoreanPdfFont(doc, "normal");
     doc.setFontSize(11);
     doc.setTextColor(...COLORS.ink);
     doc.text(summaryLines, margin + 4, y + 6);
