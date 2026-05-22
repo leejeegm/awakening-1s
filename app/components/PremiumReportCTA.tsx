@@ -6,11 +6,21 @@ const AUTH_HASH_STORAGE_PREFIX = "participant_auth_hash_v1";
 
 type EligibilityResponse = {
   qualifies: boolean;
+  qualifiesWeekly?: boolean;
+  qualifiesRolling?: boolean;
   consecutiveWeeks: number;
   qualifiesFromWeek: string | null;
   ctaState: "enabled" | "locked";
   message: string;
   weeklyDayCounts?: { week: string; distinctDays: number; qualifies: boolean }[];
+  rolling?: {
+    windowDays: number;
+    minRecords: number;
+    recordCount: number;
+    windowFrom: string;
+    windowTo: string;
+    qualifies: boolean;
+  };
 };
 
 type RequestItem = {
@@ -93,11 +103,30 @@ function buildConfirmSummary(
   latestRequest: RequestItem | null
 ): string {
   if (!authenticated) {
-    return "비밀번호 인증이 필요합니다. 아래에서 닉네임 비밀번호를 입력한 뒤 「인증 후 확인」을 누르거나, 「내 자각 실험 결과 보기」에서 조회를 마친 뒤 이 버튼을 다시 눌러 주세요.";
+    return "비밀번호 인증이 필요합니다. 아래 입력란에 닉네임 비밀번호를 입력한 뒤 「인증 후 확인」을 누르거나, 「내 자각 실험 결과 보기」에서 조회를 마친 뒤 「신청 및 결재 확인」을 다시 눌러 주세요.";
   }
   const parts: string[] = ["[인증 완료] 유료 보고서 상태를 확인했습니다."];
   if (eligibility) {
-    parts.push(`자격: ${eligibility.message}`);
+    if (eligibility.qualifies) {
+      parts.push(`자격: 충족 — ${eligibility.message} 「유료 보고서 신청하기」가 표시됩니다.`);
+      if (eligibility.qualifiesRolling && !eligibility.qualifiesWeekly && eligibility.rolling) {
+        parts.push(
+          `(완화 기준) 최근 ${eligibility.rolling.windowDays}일 기록 ${eligibility.rolling.recordCount}회 — 필요 ${eligibility.rolling.minRecords}회`
+        );
+      }
+    } else {
+      const need =
+        eligibility.weeklyDayCounts?.filter((w) => !w.qualifies).length ?? 0;
+      parts.push(
+        `자격: 미충족 — 최근 4주 모두 주 3일 이상 기록이 필요합니다. (조건 미달 주: ${need}개)`
+      );
+      if (eligibility.rolling) {
+        parts.push(
+          `완화 기준: 최근 ${eligibility.rolling.windowDays}일 ${eligibility.rolling.minRecords}회 이상 (현재 ${eligibility.rolling.recordCount}회)`
+        );
+      }
+      parts.push(`안내: ${eligibility.message}`);
+    }
   }
   parts.push(`결재·진행: ${buildPaymentProgressGuide(latestRequest)}`);
   if (latestRequest) {
@@ -105,7 +134,7 @@ function buildConfirmSummary(
       `상세 — 신청 ${statusLabel(latestRequest)}, 결재 ${paymentStatusLabel(latestRequest)} (${new Date(latestRequest.updated_at).toLocaleString("ko-KR")} 갱신)`
     );
   }
-  return parts.join(" ");
+  return parts.join("\n");
 }
 
 export default function PremiumReportCTA({
@@ -361,7 +390,21 @@ export default function PremiumReportCTA({
 
   return (
     <div className="space-y-2">
-      <button type="button" onClick={() => setOpen((v) => !v)} className={buttonClass}>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen((v) => {
+            const next = !v;
+            if (next) {
+              setStatusMessage("");
+              setAuthError("");
+              setRequestError("");
+            }
+            return next;
+          });
+        }}
+        className={buttonClass}
+      >
         나의 자깨 감응 보고서 보기(유료)
       </button>
 
@@ -404,7 +447,7 @@ export default function PremiumReportCTA({
                 유료 보고서 자격과 신청·결재 상태를 확인하려면 닉네임 비밀번호 인증이 필요합니다.
               </p>
               <p className="text-[12px] text-slate-500">
-                「신청 및 결재 확인」을 누르면 인증 안내가 표시됩니다. 「내 자각 실험 결과 보기」에서 조회를 마친 경우에도 아래에서 비밀번호를 입력해 주세요.
+                「신청 및 결재 확인」을 누르면 인증 안내가 표시됩니다. 「내 자각 실험 결과 보기」에서 조회를 마친 경우에도 아래 입력란에 비밀번호를 입력해 주세요.
               </p>
               <div className="flex flex-wrap gap-2">
                 <input
@@ -434,8 +477,32 @@ export default function PremiumReportCTA({
 
               {eligibility && (
                 <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3 space-y-2">
-                  <p className="text-[12px] font-medium text-slate-400">자격 요건</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[12px] font-medium text-slate-400">자격 요건</p>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[12px] font-medium ${
+                        eligibility.qualifies
+                          ? "bg-emerald-500/20 text-emerald-300"
+                          : "bg-amber-500/20 text-amber-200"
+                      }`}
+                    >
+                      {eligibility.qualifies ? "충족" : "미충족"}
+                    </span>
+                  </div>
                   <p className="text-[12px] text-slate-200">{eligibility.message}</p>
+                  {!eligibility.qualifiesWeekly && (
+                    <p className="text-[12px] text-slate-500 leading-relaxed">
+                      각 주(일요일 기준)마다 서로 다른 날에 3일 이상 기록해야 합니다. 3일 미만인 주는 회색으로 표시됩니다.
+                    </p>
+                  )}
+                  {eligibility.rolling && (
+                    <p className="text-[12px] text-slate-500 leading-relaxed">
+                      완화·테스트 기준: 최근 {eligibility.rolling.windowDays}일 동안 총{" "}
+                      {eligibility.rolling.minRecords}회 이상 기록 시 신청 가능 (현재{" "}
+                      {eligibility.rolling.recordCount}회
+                      {eligibility.rolling.qualifies ? ", 충족" : ", 미충족"})
+                    </p>
+                  )}
                   {eligibility.weeklyDayCounts && eligibility.weeklyDayCounts.length > 0 && (
                     <div className="flex flex-wrap gap-2 text-[12px] text-slate-400">
                       {eligibility.weeklyDayCounts.map((row) => (

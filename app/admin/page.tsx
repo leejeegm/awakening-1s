@@ -41,7 +41,8 @@ type AdminTab =
   | "moderation_quarantine"
   | "entitlements"
   | "image_audit"
-  | "premium_reports";
+  | "premium_reports"
+  | "premium_eligibility";
 
 type EntitlementActionRow = {
   id: string;
@@ -96,6 +97,20 @@ type PremiumReportProductRow = {
   active: boolean;
   created_at: string;
   updated_at: string;
+};
+
+type PremiumEligibilityCheckResult = {
+  nickname?: string;
+  canApplyPremiumReport?: boolean;
+  message?: string;
+  hasParticipantKey?: boolean;
+  passwordHint?: string | null;
+  qualifiesWeekly?: boolean;
+  qualifiesRolling?: boolean;
+  weeklyDayCounts?: { week: string; distinctDays: number; qualifies: boolean }[];
+  rolling?: { recordCount: number; minRecords: number; windowDays: number };
+  criteria?: { weekly?: string; rollingTest?: string };
+  recentRequests?: { status: string; payment_status: string; updated_at: string }[];
 };
 
 type PremiumReportRequestRow = {
@@ -592,6 +607,10 @@ export default function AdminPage() {
   const [premiumRequests, setPremiumRequests] = useState<PremiumReportRequestRow[]>([]);
   const [premiumLoading, setPremiumLoading] = useState(false);
   const [premiumError, setPremiumError] = useState("");
+  const [eligCheckNick, setEligCheckNick] = useState("");
+  const [eligCheckLoading, setEligCheckLoading] = useState(false);
+  const [eligCheckError, setEligCheckError] = useState("");
+  const [eligCheckResult, setEligCheckResult] = useState<PremiumEligibilityCheckResult | null>(null);
   const [selectedPremiumRequestId, setSelectedPremiumRequestId] = useState<string | null>(null);
   const [premiumDocLoading, setPremiumDocLoading] = useState(false);
   const [premiumDocError, setPremiumDocError] = useState("");
@@ -792,6 +811,31 @@ export default function AdminPage() {
       setEntLoading(false);
     }
   }, [entNick]);
+
+  const loadPremiumEligibilityCheck = useCallback(async () => {
+    const nick = eligCheckNick.trim();
+    if (!nick) {
+      setEligCheckError("닉네임을 입력하세요.");
+      setEligCheckResult(null);
+      return;
+    }
+    setEligCheckLoading(true);
+    setEligCheckError("");
+    setEligCheckResult(null);
+    try {
+      const res = await fetch(`/api/admin/premium-report/eligibility?nickname=${encodeURIComponent(nick)}`);
+      const json = (await res.json().catch(() => ({}))) as PremiumEligibilityCheckResult & { error?: string };
+      if (!res.ok) {
+        setEligCheckError(String(json.error ?? "자격 조회 실패"));
+        return;
+      }
+      setEligCheckResult(json);
+    } catch {
+      setEligCheckError("네트워크 오류");
+    } finally {
+      setEligCheckLoading(false);
+    }
+  }, [eligCheckNick]);
 
   const loadPremiumReports = useCallback(async () => {
     setPremiumLoading(true);
@@ -1423,6 +1467,10 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (loggedIn === true && tab === "premium_reports") loadPremiumReports();
+    if (loggedIn === true && tab === "premium_eligibility") {
+      setEligCheckResult(null);
+      setEligCheckError("");
+    }
   }, [loggedIn, tab, loadPremiumReports]);
 
   const handleDelete = async (id: string) => {
@@ -1722,7 +1770,9 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 p-4 pb-8">
-      <div className={`mx-auto ${tab === "image_audit" || tab === "premium_reports" ? "max-w-4xl" : "max-w-2xl"}`}>
+      <div
+        className={`mx-auto ${tab === "image_audit" || tab === "premium_reports" || tab === "premium_eligibility" ? "max-w-4xl" : "max-w-2xl"}`}
+      >
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-lg font-bold">관리자</h1>
           <button
@@ -1789,6 +1839,13 @@ export default function AdminPage() {
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${tab === "premium_reports" ? "bg-electric-blue/80 text-white" : "bg-slate-700 text-slate-400 hover:bg-slate-600"}`}
           >
             유료 보고서
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("premium_eligibility")}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${tab === "premium_eligibility" ? "bg-electric-blue/80 text-white" : "bg-slate-700 text-slate-400 hover:bg-slate-600"}`}
+          >
+            유료 자격·인증
           </button>
         </div>
         {tab === "moderation_quarantine" && (
@@ -2309,6 +2366,109 @@ export default function AdminPage() {
             )}
             {!mqLoading && moderationArchived.length === 0 && (
               <p className="text-slate-500 py-8 text-center">삭제 보관 중인 글이 없습니다.</p>
+            )}
+          </>
+        )}
+        {tab === "premium_eligibility" && (
+          <>
+            <p className="text-xs text-slate-500 mb-3">
+              닉네임별 유료 보고서 자격을 조회합니다. 기본: 매주 3일×4주. 테스트·완화: 조회 시점 기준 최근 28일 총 기록 12회 이상이면
+              신청 가능(qualifies)으로 처리됩니다. participant_keys 등록 여부와 최근 신청·결재 상태도 함께 표시됩니다.
+            </p>
+            <div className="flex flex-wrap gap-2 items-end mb-4">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[11px] text-slate-400">닉네임</span>
+                <input
+                  type="text"
+                  value={eligCheckNick}
+                  onChange={(e) => setEligCheckNick(e.target.value)}
+                  placeholder="조회할 닉네임"
+                  className="rounded-lg bg-slate-900 border border-slate-600 text-slate-200 text-sm px-3 py-2 w-48"
+                  maxLength={20}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={loadPremiumEligibilityCheck}
+                disabled={eligCheckLoading}
+                className="px-3 py-2 rounded-lg bg-electric-blue/80 text-white text-sm font-medium hover:bg-electric-blue disabled:opacity-50"
+              >
+                {eligCheckLoading ? "조회 중..." : "자격·인증 확인"}
+              </button>
+              {eligCheckError && <span className="text-xs text-red-400">{eligCheckError}</span>}
+            </div>
+            {eligCheckResult && (
+              <div className="space-y-4">
+                <div className="p-3 rounded-lg border border-slate-700 bg-slate-800/60 space-y-2">
+                  <p className="text-sm text-slate-200 font-medium">
+                    {String(eligCheckResult.nickname ?? "")} —{" "}
+                    {eligCheckResult.canApplyPremiumReport ? (
+                      <span className="text-emerald-300">유료 신청 가능</span>
+                    ) : (
+                      <span className="text-amber-300">유료 신청 불가</span>
+                    )}
+                  </p>
+                  <p className="text-xs text-slate-400">{String(eligCheckResult.message ?? "")}</p>
+                  <div className="flex flex-wrap gap-2 text-[11px]">
+                    <span className="rounded-full px-2 py-1 bg-slate-700 text-slate-300">
+                      비밀번호 등록: {eligCheckResult.hasParticipantKey ? "있음" : "없음"}
+                    </span>
+                    <span className="rounded-full px-2 py-1 bg-slate-700 text-slate-300">
+                      주별 4주: {eligCheckResult.qualifiesWeekly ? "충족" : "미충족"}
+                    </span>
+                    <span className="rounded-full px-2 py-1 bg-slate-700 text-slate-300">
+                      28일 12회+: {eligCheckResult.qualifiesRolling ? "충족" : "미충족"}
+                    </span>
+                  </div>
+                  {typeof eligCheckResult.passwordHint === "string" && eligCheckResult.passwordHint && (
+                    <p className="text-[11px] text-slate-500">비밀번호 힌트: {eligCheckResult.passwordHint}</p>
+                  )}
+                </div>
+                {eligCheckResult.weeklyDayCounts && eligCheckResult.weeklyDayCounts.length > 0 && (
+                  <div className="p-3 rounded-lg border border-slate-700 bg-slate-800/40">
+                    <p className="text-xs text-slate-400 mb-2">주별 기록 일수 (일요일 주 기준)</p>
+                    <div className="flex flex-wrap gap-2">
+                      {eligCheckResult.weeklyDayCounts.map((row) => (
+                          <span
+                            key={row.week}
+                            className={`text-[11px] rounded-full px-2 py-1 ${
+                              row.qualifies ? "bg-deep-violet/30 text-slate-200" : "bg-slate-700 text-slate-400"
+                            }`}
+                          >
+                            {row.week} · {row.distinctDays}일
+                          </span>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+                {eligCheckResult.rolling && (
+                  <div className="p-3 rounded-lg border border-slate-700 bg-slate-800/40">
+                    <p className="text-xs text-slate-400 mb-1">28일 완화·테스트 기준</p>
+                    <p className="text-xs text-slate-300">
+                      기록 {eligCheckResult.rolling.recordCount}회 / 필요 {eligCheckResult.rolling.minRecords}회 (
+                      {eligCheckResult.rolling.windowDays}일)
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {eligCheckResult.criteria?.rollingTest ?? ""}
+                    </p>
+                  </div>
+                )}
+                {eligCheckResult.recentRequests && eligCheckResult.recentRequests.length > 0 && (
+                  <div className="p-3 rounded-lg border border-slate-700 bg-slate-800/40">
+                    <p className="text-xs text-slate-400 mb-2">최근 유료 신청·결재</p>
+                    <ul className="space-y-1 text-xs text-slate-300">
+                      {eligCheckResult.recentRequests.map((r, i) => (
+                          <li key={i}>
+                            신청 {r.status} · 결재 {r.payment_status} ·{" "}
+                            {new Date(r.updated_at).toLocaleString("ko-KR")}
+                          </li>
+                        )
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
             )}
           </>
         )}

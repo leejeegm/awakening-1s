@@ -2,26 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { verifyParticipantAuthHash } from "@/lib/participantAuth";
 import { normalizeNickname } from "@/lib/entitlements";
-import { getWeekRangeKST } from "@/lib/weekRange";
-import {
-  buildPremiumReportCtaState,
-  buildPremiumReportEligibilityMessage,
-  getRecentSundayKeysKST,
-  PREMIUM_REPORT_REQUIRED_DAYS_PER_WEEK,
-  PREMIUM_REPORT_REQUIRED_WEEKS,
-  type PremiumReportEligibilityWeek,
-} from "@/lib/premiumReport";
-
-function formatKstDay(iso: string) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
-    .format(new Date(iso))
-    .replace(/\//g, "-");
-}
+import { computePremiumReportEligibility } from "@/lib/premiumReportEligibility";
+import { getRecentSundayKeysKST } from "@/lib/premiumReport";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -46,57 +28,37 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "DB 연결을 사용할 수 없습니다." }, { status: 503 });
   }
 
-  const weeks = getRecentSundayKeysKST(PREMIUM_REPORT_REQUIRED_WEEKS);
-  const weeklyDayCounts: PremiumReportEligibilityWeek[] = [];
-
-  for (const week of weeks) {
-    const { from, to } = getWeekRangeKST(week);
-    const { data, error } = await admin
-      .from("awakenings")
-      .select("created_at")
-      .eq("nickname", rawNickname)
-      .gte("created_at", from)
-      .lte("created_at", to);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    const daySet = new Set(((data ?? []) as { created_at: string }[]).map((row) => formatKstDay(row.created_at)));
-    weeklyDayCounts.push({
-      week,
-      distinctDays: daySet.size,
-      qualifies: daySet.size >= PREMIUM_REPORT_REQUIRED_DAYS_PER_WEEK,
-    });
+  const result = await computePremiumReportEligibility(admin, rawNickname);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: 500 });
   }
 
-  const qualifies =
-    weeklyDayCounts.length === PREMIUM_REPORT_REQUIRED_WEEKS &&
-    weeklyDayCounts.every((row) => row.qualifies);
-  let consecutiveWeeks = 0;
-  for (let i = weeklyDayCounts.length - 1; i >= 0; i--) {
-    if (!weeklyDayCounts[i]?.qualifies) break;
-    consecutiveWeeks += 1;
-  }
-  const qualifiesFromWeek =
-    consecutiveWeeks > 0 ? weeklyDayCounts[weeklyDayCounts.length - consecutiveWeeks]?.week ?? null : null;
+  const { evaluation } = result;
 
   await admin.from("premium_report_eligibility_snapshots").upsert({
     nickname,
-    qualifies,
-    consecutive_weeks: consecutiveWeeks,
-    qualifies_from_week: qualifiesFromWeek,
+    qualifies: evaluation.qualifies,
+    consecutive_weeks: evaluation.consecutiveWeeks,
+    qualifies_from_week: evaluation.qualifiesFromWeek,
     evaluated_at: new Date().toISOString(),
-    weekly_day_counts_json: weeklyDayCounts,
-    meta_json: { checkedWeeks: weeks.length },
+    weekly_day_counts_json: evaluation.weeklyDayCounts,
+    meta_json: {
+      checkedWeeks: getRecentSundayKeysKST().length,
+      qualifiesWeekly: evaluation.qualifiesWeekly,
+      qualifiesRolling: evaluation.qualifiesRolling,
+      rolling: evaluation.rolling,
+    },
   } as never);
 
   return NextResponse.json({
-    qualifies,
-    consecutiveWeeks,
-    qualifiesFromWeek,
-    ctaState: buildPremiumReportCtaState(qualifies),
-    message: buildPremiumReportEligibilityMessage(qualifies),
-    weeklyDayCounts,
+    qualifies: evaluation.qualifies,
+    qualifiesWeekly: evaluation.qualifiesWeekly,
+    qualifiesRolling: evaluation.qualifiesRolling,
+    consecutiveWeeks: evaluation.consecutiveWeeks,
+    qualifiesFromWeek: evaluation.qualifiesFromWeek,
+    ctaState: evaluation.ctaState,
+    message: evaluation.message,
+    weeklyDayCounts: evaluation.weeklyDayCounts,
+    rolling: evaluation.rolling,
   });
 }
