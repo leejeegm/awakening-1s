@@ -121,12 +121,12 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
         <FileText className="w-4 h-4" />
         주별 1페이지 보고서 (감응 요약)
       </h3>
-      <p className="text-xs text-slate-500">
+      <p className="text-[12px] text-slate-500">
         주별 마지막날(일요일) 0시 KST 기준. 무료: 보기만 가능. 유료 플랜(초°·분°·시°설계자): PDF 다운로드 가능. 다른 닉네임 조회 시 해당 닉네임의 비밀번호 입력이 필요합니다.
       </p>
       <div className="flex flex-wrap gap-2 items-end">
         <label className="flex flex-col gap-0.5">
-          <span className="text-[11px] text-slate-400">닉네임</span>
+          <span className="text-[12px] text-slate-400">닉네임</span>
           <input
             type="text"
             value={nickname}
@@ -137,7 +137,7 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
           />
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-[11px] text-slate-400">주(일요일)</span>
+          <span className="text-[12px] text-slate-400">주(일요일)</span>
           <input
             type="date"
             value={week}
@@ -147,7 +147,7 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
         </label>
         {isOtherNickname && (
           <label className="flex flex-col gap-0.5">
-            <span className="text-[11px] text-slate-400">비밀번호 (해당 닉네임)</span>
+            <span className="text-[12px] text-slate-400">비밀번호 (해당 닉네임)</span>
             <input
               type="password"
               value={otherPassword}
@@ -162,10 +162,21 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
           type="button"
           onClick={loadReport}
           disabled={loading}
-          className="px-4 py-2 rounded-lg bg-electric-blue/80 text-white text-sm font-medium hover:bg-electric-blue disabled:opacity-50"
+          className="px-4 py-2 rounded-lg bg-electric-blue/80 text-white text-[12px] font-medium hover:bg-electric-blue disabled:opacity-50"
         >
           {loading ? "불러오는 중..." : "보고서 보기"}
         </button>
+        {data && (
+          <SpeechControls
+            text={`${data.sentimentSummary}${
+              data.keywordSummary.length > 0
+                ? `\n\n키워드: ${data.keywordSummary.map((k) => `${k.keyword} ${k.count}회`).join(", ")}`
+                : ""
+            }`}
+            speakLabel="말하기"
+            stopLabel="멈춤"
+          />
+        )}
       </div>
       {error && <p className="text-sm text-red-400">{error}</p>}
       {data && (
@@ -192,25 +203,14 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
           </div>
           {data.sentimentSummary && (
             <div>
-              <p className="text-[11px] text-slate-400 mb-0.5">이번 주 감응 요약</p>
-              <p className="text-sm text-slate-300 leading-relaxed">{data.sentimentSummary}</p>
-              <div className="mt-2">
-                <SpeechControls
-                  text={`${data.sentimentSummary}${
-                    data.keywordSummary.length > 0
-                      ? `\n\n키워드: ${data.keywordSummary.map((k) => `${k.keyword} ${k.count}회`).join(", ")}`
-                      : ""
-                  }`}
-                  speakLabel="말하기"
-                  stopLabel="멈춤"
-                />
-              </div>
+              <p className="text-[12px] text-slate-400 mb-0.5">이번 주 감응 요약</p>
+              <p className="text-[12px] text-slate-300 leading-relaxed">{data.sentimentSummary}</p>
             </div>
           )}
           {data.keywordSummary.length > 0 && (
             <div>
-              <p className="text-[11px] text-slate-400 mb-1">키워드 (빈도순)</p>
-              <p className="text-xs text-slate-400">
+              <p className="text-[12px] text-slate-400 mb-1">키워드 (빈도순)</p>
+              <p className="text-[12px] text-slate-400">
                 {data.keywordSummary.map((k) => `${k.keyword}(${k.count})`).join(", ")}
               </p>
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Database } from "@/types/supabase";
 import { Lock, X } from "lucide-react";
@@ -35,13 +35,15 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
   const [message, setMessage] = useState("");
   const [records, setRecords] = useState<AwakeningRow[]>([]);
 
-  useEffect(() => {
-    if (!open) return;
-    const current =
-      (defaultNickname ?? "").trim() ||
-      (typeof window !== "undefined" ? (localStorage.getItem("lastRecordNickname") ?? "").trim() : "");
-    if (current && !nickname.trim()) setNickname(current);
-  }, [open, defaultNickname, nickname]);
+  const resolveDefaultNickname = () =>
+    (defaultNickname ?? "").trim() ||
+    (typeof window !== "undefined" ? (localStorage.getItem("lastRecordNickname") ?? "").trim() : "");
+
+  const handleOpen = () => {
+    const current = resolveDefaultNickname();
+    if (current) setNickname(current);
+    setOpen(true);
+  };
 
   const onLookup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,7 +120,7 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={handleOpen}
         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-deep-violet/60 hover:bg-deep-violet text-white font-semibold text-[12px] transition"
       >
         <Lock className="w-4 h-4" />
@@ -126,7 +128,7 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl w-[min(96vw,40rem)] max-h-[90vh] overflow-hidden flex flex-col resize">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-[min(96vw,40rem)] min-w-[17rem] min-h-[14rem] max-w-[98vw] max-h-[95vh] overflow-hidden flex flex-col resize both">
             <div className="flex items-center justify-between p-4 border-b border-slate-700">
               <h3 className="text-[12px] font-bold text-slate-100">내 자각 실험 결과 보기(닉네임 비번 설정)</h3>
               <button
@@ -139,8 +141,8 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
               </button>
             </div>
             <div className="p-4 space-y-4 overflow-y-auto">
-              <p className="text-xs text-slate-500">
-                닉네임과 비밀번호를 입력하면 해당 닉네임으로 기록한 누적 자각 목록을 볼 수 있습니다. 처음 조회 시 입력한 비밀번호가 해당 닉네임에 저장됩니다. 잊지 마세요. 비밀번호 힌트를 넣어두면 비밀번호를 잊었을 때 힌트가 표시됩니다.
+              <p className="text-[12px] text-slate-500">
+                닉네임과 비밀번호를 입력하면 해당 닉네임으로 기록한 누적 자각 목록을 볼 수 있습니다. 처음 조회 시 입력한 비밀번호가 해당 닉네임에 저장됩니다. 잊지 마세요. 비밀번호 힌트를 넣어두면 비밀번호를 잊었을 때 힌트가 표시됩니다. 모서리를 드래그하면 창 크기를 조절할 수 있습니다.
               </p>
               <form onSubmit={onLookup} className="space-y-3">
                 <input
@@ -182,22 +184,22 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
                 </button>
               </form>
               {message && (
-                <p className={`text-sm ${status === "error" ? "text-red-400" : "text-slate-400"}`}>
+                <p className={`text-[12px] ${status === "error" ? "text-red-400" : "text-slate-400"}`}>
                   {message}
                 </p>
               )}
               {status === "ok" && (
                 <div>
-                  <p className="text-sm text-slate-400 mb-2">
+                  <p className="text-[12px] text-slate-400 mb-2">
                     총 {records.length}건
                   </p>
                   <ul className="space-y-2 max-h-48 overflow-y-auto">
                     {records.map((item) => (
                       <li
                         key={item.id}
-                        className="p-3 rounded-lg bg-slate-800/60 border border-slate-700/50 text-sm"
+                        className="p-3 rounded-lg bg-slate-800/60 border border-slate-700/50 text-[12px]"
                       >
-                        <time className="text-xs text-slate-500">
+                        <time className="text-[12px] text-slate-500">
                           {new Date(item.created_at).toLocaleString("ko-KR")}
                         </time>
                         <p className="mt-1 text-slate-300 break-words">{item.note}</p>

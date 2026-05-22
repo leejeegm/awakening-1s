@@ -189,7 +189,7 @@ export default function GrowthMessage({
 
   return (
     <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-4 space-y-3">
-      <p className="text-xs text-slate-500 mb-1">감응 성장 문구 · 아래에서 음성/중지/소리/감응 사용</p>
+      <p className="text-[12px] text-slate-500 mb-1">감응 성장 문구 · 음성/중지/소리/감응 사용</p>
       <p className="text-sm flex items-center gap-x-1.5 gap-y-1 flex-wrap">
         {wordsWithColors.map(({ word, color }, i) => (
           <span
@@ -352,7 +352,7 @@ export default function GrowthMessage({
             }}
             className="mt-2 text-xs text-slate-500 hover:text-slate-300 underline"
           >
-            이전에 받은 멘트 다시 보기
+            메세지 보기 (이전 멘트)
           </button>
         </div>
       )}
@@ -363,14 +363,14 @@ export default function GrowthMessage({
           onClick={() => setPastOpen(false)}
           role="dialog"
           aria-modal="true"
-          aria-label="이전에 받은 멘트"
+          aria-label="메세지 보기"
         >
           <div
-            className="max-h-[80vh] w-full max-w-md overflow-hidden rounded-xl bg-slate-800 border border-slate-600 shadow-xl flex flex-col"
+            className="max-h-[90vh] w-[min(96vw,28rem)] min-w-[17rem] min-h-[14rem] max-w-[98vw] overflow-hidden rounded-xl bg-slate-800 border border-slate-600 shadow-xl flex flex-col resize both"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center p-3 border-b border-slate-600">
-              <h3 className="text-sm font-medium text-slate-200">이전에 받은 멘트</h3>
+              <h3 className="text-[12px] font-medium text-slate-200">메세지 보기</h3>
               <button
                 type="button"
                 onClick={() => setPastOpen(false)}
@@ -415,7 +415,7 @@ export default function GrowthMessage({
                           if (!voiceEnabled) setVoiceEnabled(true);
                           speak(text, { force: true });
                         }}
-                        className="text-xs px-2 py-1 rounded bg-slate-600 text-slate-300 hover:bg-slate-500 inline-flex items-center gap-1"
+                        className="text-[12px] px-2 py-1 rounded bg-slate-600 text-slate-300 hover:bg-slate-500 inline-flex items-center gap-1"
                       >
                         <Volume2 className="w-3.5 h-3.5" />
                         말하기
@@ -423,7 +423,7 @@ export default function GrowthMessage({
                       <button
                         type="button"
                         onClick={stopSpeak}
-                        className="text-xs px-2 py-1 rounded bg-slate-700/80 hover:bg-red-500/25 text-slate-300 hover:text-red-300 inline-flex items-center gap-1"
+                        className="text-[12px] px-2 py-1 rounded bg-slate-700/80 hover:bg-red-500/25 text-slate-300 hover:text-red-300 inline-flex items-center gap-1"
                         title="음성 중지"
                         aria-label="이전 멘트 음성 중지"
                       >
@@ -450,10 +450,10 @@ export default function GrowthMessage({
                           setGenBaseText(typeof item.content === "string" ? sanitizeAiUserText(item.content) : "");
                           setGenOpen(true);
                         }}
-                        className="text-xs px-2 py-1 rounded bg-deep-violet/50 text-slate-200 hover:bg-deep-violet/70"
-                        title="이미지/웹툰 생성"
+                        className="text-[12px] px-2 py-1 rounded bg-deep-violet/50 text-slate-200 hover:bg-deep-violet/70"
+                        title="유료: 기록 기반 이미지·4면 웹툰 생성"
                       >
-                        이미지/웹툰
+                        유료 이미지/웹툰
                       </button>
                     </div>
                   </div>

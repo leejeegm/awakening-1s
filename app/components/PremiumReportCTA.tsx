@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+const AUTH_HASH_STORAGE_PREFIX = "participant_auth_hash_v1";
+
 type EligibilityResponse = {
   qualifies: boolean;
   consecutiveWeeks: number;
@@ -54,6 +56,58 @@ function paymentStatusLabel(item: RequestItem) {
   return item.payment_status;
 }
 
+function buildPaymentProgressGuide(item: RequestItem | null): string {
+  if (!item) {
+    return "유료 보고서 신청 내역이 없습니다. 자격 요건을 충족한 뒤 「유료 보고서 신청하기」로 신청할 수 있습니다.";
+  }
+  if (item.status === "ready" && item.downloadable) {
+    return "보고서가 준비되었습니다. 아래 「나의 자깨 감응 보고서 다운로드」로 받을 수 있습니다.";
+  }
+  if (item.status === "ready") {
+    return "발행은 완료되었으나 아직 다운로드 가능 상태가 아닙니다. 잠시 후 다시 확인해 주세요.";
+  }
+  if (item.status === "in_progress") {
+    return "결재가 확인되어 보고서를 작성 중입니다. 완료되면 다운로드가 열립니다.";
+  }
+  if (item.status === "approved") {
+    return "신청이 승인되었습니다. 곧 보고서 작성이 시작됩니다.";
+  }
+  if (item.status === "paid_pending" || item.payment_status === "pending_manual_check") {
+    return "신청이 접수되었습니다. 입금·결재 확인이 진행 중이며, 확인이 끝나면 다음 단계로 넘어갑니다.";
+  }
+  if (item.status === "requested") {
+    return "신청이 접수되었습니다. 안내에 따라 결재를 진행해 주시고, 「신청 및 결재 확인」으로 상태를 다시 확인할 수 있습니다.";
+  }
+  if (item.status === "rejected") {
+    return "이전 신청이 반려되었습니다. 사유 확인 후 다시 신청할 수 있습니다.";
+  }
+  if (item.status === "expired") {
+    return "이전 신청이 만료되었습니다. 필요 시 다시 신청해 주세요.";
+  }
+  return `현재 진행: 신청 ${statusLabel(item)}, 결재 ${paymentStatusLabel(item)}`;
+}
+
+function buildConfirmSummary(
+  authenticated: boolean,
+  eligibility: EligibilityResponse | null,
+  latestRequest: RequestItem | null
+): string {
+  if (!authenticated) {
+    return "비밀번호 인증이 필요합니다. 아래에서 닉네임 비밀번호를 입력한 뒤 「인증 후 확인」을 누르거나, 「내 자각 실험 결과 보기」에서 조회를 마친 뒤 이 버튼을 다시 눌러 주세요.";
+  }
+  const parts: string[] = ["[인증 완료] 유료 보고서 상태를 확인했습니다."];
+  if (eligibility) {
+    parts.push(`자격: ${eligibility.message}`);
+  }
+  parts.push(`결재·진행: ${buildPaymentProgressGuide(latestRequest)}`);
+  if (latestRequest) {
+    parts.push(
+      `상세 — 신청 ${statusLabel(latestRequest)}, 결재 ${paymentStatusLabel(latestRequest)} (${new Date(latestRequest.updated_at).toLocaleString("ko-KR")} 갱신)`
+    );
+  }
+  return parts.join(" ");
+}
+
 export default function PremiumReportCTA({
   nickname = "",
   participantAuthHash = "",
@@ -69,77 +123,155 @@ export default function PremiumReportCTA({
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [requestBusy, setRequestBusy] = useState(false);
   const [requestError, setRequestError] = useState("");
-  const [requestMessage, setRequestMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
 
   const trimmedNickname = nickname.trim();
+  const isAuthenticated = !!participantAuthHash.trim();
   const latestRequest = requests[0] ?? null;
   const canSubmitNewRequest =
     !!eligibility?.qualifies && (!latestRequest || latestRequest.status === "rejected" || latestRequest.status === "expired");
+  const isChecking = eligibilityLoading || requestsLoading;
 
-  const loadState = useCallback(async () => {
-    if (!trimmedNickname || !participantAuthHash) return;
+  const loadState = useCallback(
+    async (authHashOverride?: string): Promise<boolean> => {
+      const hash = (authHashOverride ?? participantAuthHash).trim();
+      if (!trimmedNickname) {
+        setAuthError("먼저 닉네임으로 기록을 남겨 주세요.");
+        setStatusMessage("닉네임으로 기록을 남긴 뒤 유료 보고서를 이용할 수 있습니다.");
+        return false;
+      }
+      if (!hash) {
+        setAuthError("");
+        setRequestError("");
+        setStatusMessage(buildConfirmSummary(false, null, null));
+        return false;
+      }
 
-    setEligibilityLoading(true);
-    setRequestsLoading(true);
-    setAuthError("");
-    setRequestError("");
+      setEligibilityLoading(true);
+      setRequestsLoading(true);
+      setAuthError("");
+      setRequestError("");
 
-    try {
-      const [eligibilityRes, requestsRes] = await Promise.all([
-        fetch(
-          `/api/premium-report/eligibility?nickname=${encodeURIComponent(trimmedNickname)}&authHash=${encodeURIComponent(
-            participantAuthHash
-          )}`
-        ),
-        fetch(
-          `/api/premium-report/request?nickname=${encodeURIComponent(trimmedNickname)}&authHash=${encodeURIComponent(
-            participantAuthHash
-          )}`
-        ),
-      ]);
+      let ok = true;
+      let nextEligibility: EligibilityResponse | null = null;
+      let nextRequests: RequestItem[] = [];
+      const errors: string[] = [];
 
-      const eligibilityJson = (await eligibilityRes.json().catch(() => ({}))) as EligibilityResponse & {
-        error?: string;
-      };
-      const requestsJson = (await requestsRes.json().catch(() => ({}))) as { items?: RequestItem[]; error?: string };
+      try {
+        const [eligibilityRes, requestsRes] = await Promise.all([
+          fetch(
+            `/api/premium-report/eligibility?nickname=${encodeURIComponent(trimmedNickname)}&authHash=${encodeURIComponent(hash)}`
+          ),
+          fetch(
+            `/api/premium-report/request?nickname=${encodeURIComponent(trimmedNickname)}&authHash=${encodeURIComponent(hash)}`
+          ),
+        ]);
 
-      if (eligibilityRes.ok) {
-        setEligibility(eligibilityJson);
-      } else {
+        const eligibilityJson = (await eligibilityRes.json().catch(() => ({}))) as EligibilityResponse & {
+          error?: string;
+          requiresAuth?: boolean;
+        };
+        const requestsJson = (await requestsRes.json().catch(() => ({}))) as {
+          items?: RequestItem[];
+          error?: string;
+          requiresAuth?: boolean;
+        };
+
+        if (eligibilityRes.ok) {
+          nextEligibility = eligibilityJson;
+          setEligibility(eligibilityJson);
+        } else {
+          setEligibility(null);
+          ok = false;
+          errors.push(eligibilityJson.error ?? "자격 정보를 불러오지 못했습니다.");
+          if (eligibilityRes.status === 401 || eligibilityJson.requiresAuth) {
+            errors.push("비밀번호 인증이 만료되었을 수 있습니다. 다시 인증해 주세요.");
+          }
+        }
+
+        if (requestsRes.ok) {
+          nextRequests = Array.isArray(requestsJson.items) ? requestsJson.items : [];
+          setRequests(nextRequests);
+        } else {
+          setRequests([]);
+          ok = false;
+          errors.push(requestsJson.error ?? "신청·결재 상태를 불러오지 못했습니다.");
+        }
+
+        if (errors.length > 0) {
+          const msg = errors.join(" ");
+          setAuthError(msg);
+          setStatusMessage(`[확인 실패] ${msg}`);
+        } else {
+          setStatusMessage(
+            buildConfirmSummary(true, nextEligibility, nextRequests[0] ?? null)
+          );
+          setLastCheckedAt(new Date().toLocaleString("ko-KR"));
+        }
+      } catch {
+        ok = false;
+        const msg = "네트워크 오류로 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+        setAuthError(msg);
+        setStatusMessage(`[확인 실패] ${msg}`);
         setEligibility(null);
-        setAuthError(eligibilityJson.error ?? "자격 정보를 불러오지 못했습니다.");
+        setRequests([]);
+      } finally {
+        setEligibilityLoading(false);
+        setRequestsLoading(false);
       }
 
-      if (requestsRes.ok) {
-        setRequests(Array.isArray(requestsJson.items) ? requestsJson.items : []);
-      } else {
-        setRequests([]);
-        if (!authError) setRequestError(requestsJson.error ?? "신청 상태를 불러오지 못했습니다.");
-      }
-    } finally {
-      setEligibilityLoading(false);
-      setRequestsLoading(false);
+      return ok;
+    },
+    [trimmedNickname, participantAuthHash]
+  );
+
+  const handleConfirmClick = async () => {
+    setRequestError("");
+    if (!trimmedNickname) {
+      setStatusMessage("먼저 닉네임으로 자각 기록을 남겨 주세요.");
+      setAuthError("먼저 닉네임으로 기록을 남겨 주세요.");
+      return;
     }
-  }, [trimmedNickname, participantAuthHash, authError]);
+    if (!isAuthenticated) {
+      setStatusMessage(buildConfirmSummary(false, null, null));
+      return;
+    }
+    setStatusMessage("유료 보고서 자격과 신청·결재 상태를 확인하는 중...");
+    await loadState();
+  };
 
   useEffect(() => {
-    if (!open) return;
-    if (!trimmedNickname || !participantAuthHash) return;
-    loadState();
-  }, [open, trimmedNickname, participantAuthHash, loadState]);
+    if (!open || !trimmedNickname || isAuthenticated) return;
+    try {
+      const stored = sessionStorage.getItem(`${AUTH_HASH_STORAGE_PREFIX}:${trimmedNickname}`);
+      if (stored?.trim()) onParticipantAuthHashVerified?.(stored.trim());
+    } catch {
+      /* ignore */
+    }
+  }, [open, trimmedNickname, isAuthenticated, onParticipantAuthHashVerified]);
+
+  useEffect(() => {
+    if (!open || !trimmedNickname || !isAuthenticated) return;
+    void loadState();
+  }, [open, trimmedNickname, isAuthenticated, loadState]);
 
   const verifyAndLoad = async () => {
     if (!trimmedNickname) {
       setAuthError("먼저 닉네임으로 기록을 남겨 주세요.");
+      setStatusMessage("먼저 닉네임으로 자각 기록을 남겨 주세요.");
       return;
     }
     if (!password.trim()) {
       setAuthError("비밀번호를 입력해 주세요.");
+      setStatusMessage("비밀번호를 입력한 뒤 「인증 후 확인」을 눌러 주세요.");
       return;
     }
 
     setAuthLoading(true);
     setAuthError("");
+    setRequestError("");
+    setStatusMessage("비밀번호를 확인하는 중...");
     try {
       const hash = await sha256Hex(password);
       const verifyRes = await fetch("/api/participant/verify", {
@@ -150,13 +282,16 @@ export default function PremiumReportCTA({
       const verifyJson = (await verifyRes.json().catch(() => ({}))) as { ok?: boolean; error?: string };
 
       if (!verifyRes.ok || !verifyJson.ok) {
-        setAuthError(verifyJson.error ?? "비밀번호 확인에 실패했습니다.");
+        const msg = verifyJson.error ?? "비밀번호 확인에 실패했습니다.";
+        setAuthError(msg);
+        setStatusMessage(`[인증 실패] ${msg}`);
         return;
       }
 
       onParticipantAuthHashVerified?.(hash);
       setPassword("");
-      setRequestMessage("인증되었습니다. 아래에서 신청 및 결재 확인으로 현재 상태를 다시 확인할 수 있습니다.");
+      setStatusMessage("[인증 완료] 신청·결재 상태를 불러오는 중...");
+      await loadState(hash);
     } finally {
       setAuthLoading(false);
     }
@@ -165,12 +300,13 @@ export default function PremiumReportCTA({
   const submitRequest = async () => {
     if (!trimmedNickname || !participantAuthHash) {
       setRequestError("먼저 비밀번호 인증을 완료해 주세요.");
+      setStatusMessage("먼저 비밀번호 인증을 완료해 주세요.");
       return;
     }
 
     setRequestBusy(true);
     setRequestError("");
-    setRequestMessage("");
+    setStatusMessage("유료 보고서 신청을 접수하는 중...");
 
     try {
       const res = await fetch("/api/premium-report/request", {
@@ -189,11 +325,17 @@ export default function PremiumReportCTA({
       };
 
       if (!res.ok || !json.ok) {
-        setRequestError(json.error ?? "신청에 실패했습니다.");
+        const msg = json.error ?? "신청에 실패했습니다.";
+        setRequestError(msg);
+        setStatusMessage(`[신청 실패] ${msg}`);
         return;
       }
 
-      setRequestMessage(json.alreadyExists ? "이미 진행 중인 신청이 있습니다." : "유료 보고서 신청이 접수되었습니다.");
+      setStatusMessage(
+        json.alreadyExists
+          ? "[신청 안내] 이미 진행 중인 신청이 있습니다. 아래 결재·진행 상태를 확인해 주세요."
+          : "[신청 완료] 유료 보고서 신청이 접수되었습니다. 결재 확인 후 다음 단계로 진행됩니다."
+      );
       await loadState();
     } finally {
       setRequestBusy(false);
@@ -214,6 +356,9 @@ export default function PremiumReportCTA({
     return "w-full py-3 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-[12px] hover:bg-slate-700 transition";
   }, [eligibility?.qualifies]);
 
+  const statusTone =
+    authError || requestError ? "border-red-500/40 bg-red-950/30" : "border-electric-blue/30 bg-slate-800/80";
+
   return (
     <div className="space-y-2">
       <button type="button" onClick={() => setOpen((v) => !v)} className={buttonClass}>
@@ -223,16 +368,43 @@ export default function PremiumReportCTA({
       {open && (
         <div className="rounded-lg border border-slate-700 bg-slate-900/80 p-3 space-y-3">
           {!trimmedNickname && (
-            <p className="text-xs text-slate-400">먼저 닉네임으로 기록을 남기면 유료 보고서 자격을 확인할 수 있습니다.</p>
+            <p className="text-[12px] text-slate-400">먼저 닉네임으로 기록을 남기면 유료 보고서 자격을 확인할 수 있습니다.</p>
           )}
 
-          {trimmedNickname && !participantAuthHash && (
+          {trimmedNickname && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <button
+                type="button"
+                onClick={handleConfirmClick}
+                disabled={isChecking || authLoading}
+                className="px-3 py-2 rounded-lg bg-electric-blue/80 text-white text-[12px] font-medium hover:bg-electric-blue disabled:opacity-50"
+              >
+                {isChecking || authLoading ? "확인 중..." : "신청 및 결재 확인"}
+              </button>
+              <span
+                className={`text-[12px] ${isAuthenticated ? "text-emerald-400" : "text-amber-300"}`}
+              >
+                {isAuthenticated ? "비밀번호 인증됨" : "비밀번호 미인증"}
+              </span>
+            </div>
+          )}
+
+          {statusMessage && (
+            <div className={`rounded-lg border p-3 ${statusTone}`}>
+              <p className="text-[12px] text-slate-200 leading-relaxed whitespace-pre-wrap">{statusMessage}</p>
+              {lastCheckedAt && isAuthenticated && !authError && !requestError && (
+                <p className="text-[12px] text-slate-500 mt-1">마지막 확인: {lastCheckedAt}</p>
+              )}
+            </div>
+          )}
+
+          {trimmedNickname && !isAuthenticated && (
             <div className="space-y-2">
-              <p className="text-xs text-slate-400">
-                유료 보고서 자격과 신청/결재 상태를 확인하려면 닉네임 비밀번호 인증이 필요합니다.
+              <p className="text-[12px] text-slate-400">
+                유료 보고서 자격과 신청·결재 상태를 확인하려면 닉네임 비밀번호 인증이 필요합니다.
               </p>
-              <p className="text-[11px] text-slate-500">
-                이미 「내 자각 실험 결과 보기」에서 비밀번호 조회를 마쳤다면, 이 창에서도 바로 상태 확인이 이어집니다.
+              <p className="text-[12px] text-slate-500">
+                「신청 및 결재 확인」을 누르면 인증 안내가 표시됩니다. 「내 자각 실험 결과 보기」에서 조회를 마친 경우에도 아래에서 비밀번호를 입력해 주세요.
               </p>
               <div className="flex flex-wrap gap-2">
                 <input
@@ -246,7 +418,7 @@ export default function PremiumReportCTA({
                   type="button"
                   onClick={verifyAndLoad}
                   disabled={authLoading}
-                  className="px-3 py-2 rounded-lg bg-electric-blue/80 text-white text-sm font-medium hover:bg-electric-blue disabled:opacity-50"
+                  className="px-3 py-2 rounded-lg bg-deep-violet/80 text-white text-[12px] font-medium hover:bg-deep-violet disabled:opacity-50"
                 >
                   {authLoading ? "인증 중..." : "인증 후 확인"}
                 </button>
@@ -254,27 +426,18 @@ export default function PremiumReportCTA({
             </div>
           )}
 
-          {participantAuthHash && (
+          {isAuthenticated && (
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={loadState}
-                  disabled={eligibilityLoading || requestsLoading}
-                  className="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs font-medium hover:bg-slate-700 disabled:opacity-50"
-                >
-                  {eligibilityLoading || requestsLoading ? "확인 중..." : "신청 및 결재 확인"}
-                </button>
-              </div>
-              {(eligibilityLoading || requestsLoading) && (
-                <p className="text-xs text-slate-500">유료 보고서 자격과 신청/결재 상태를 확인하는 중...</p>
+              {isChecking && (
+                <p className="text-[12px] text-slate-500">유료 보고서 자격과 신청·결재 상태를 확인하는 중...</p>
               )}
 
               {eligibility && (
                 <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3 space-y-2">
-                  <p className="text-sm text-slate-200">{eligibility.message}</p>
+                  <p className="text-[12px] font-medium text-slate-400">자격 요건</p>
+                  <p className="text-[12px] text-slate-200">{eligibility.message}</p>
                   {eligibility.weeklyDayCounts && eligibility.weeklyDayCounts.length > 0 && (
-                    <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+                    <div className="flex flex-wrap gap-2 text-[12px] text-slate-400">
                       {eligibility.weeklyDayCounts.map((row) => (
                         <span
                           key={row.week}
@@ -290,21 +453,26 @@ export default function PremiumReportCTA({
                 </div>
               )}
 
-              {latestRequest && (
-                <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3 space-y-1">
-                  <p className="text-xs text-slate-500">현재 신청/결재 상태</p>
-                  <p className="text-sm text-slate-200">신청: {statusLabel(latestRequest)}</p>
-                  <p className="text-sm text-slate-300">결재: {paymentStatusLabel(latestRequest)}</p>
-                  <p className="text-[11px] text-slate-500">
-                    최근 업데이트: {new Date(latestRequest.updated_at).toLocaleString("ko-KR")}
-                  </p>
-                </div>
-              )}
+              <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3 space-y-1">
+                <p className="text-[12px] font-medium text-slate-400">유료 결재·진행 상태</p>
+                {latestRequest ? (
+                  <>
+                    <p className="text-[12px] text-slate-200">신청: {statusLabel(latestRequest)}</p>
+                    <p className="text-[12px] text-slate-300">결재: {paymentStatusLabel(latestRequest)}</p>
+                    <p className="text-[12px] text-slate-400 leading-relaxed">{buildPaymentProgressGuide(latestRequest)}</p>
+                    <p className="text-[12px] text-slate-500">
+                      최근 업데이트: {new Date(latestRequest.updated_at).toLocaleString("ko-KR")}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[12px] text-slate-400 leading-relaxed">{buildPaymentProgressGuide(null)}</p>
+                )}
+              </div>
 
               {canSubmitNewRequest && (
                 <div className="space-y-2">
                   {latestRequest && (latestRequest.status === "rejected" || latestRequest.status === "expired") && (
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[12px] text-slate-500">
                       이전 신청이 {latestRequest.status === "rejected" ? "반려" : "만료"}되어 다시 신청할 수 있습니다.
                     </p>
                   )}
@@ -312,7 +480,7 @@ export default function PremiumReportCTA({
                     type="button"
                     onClick={submitRequest}
                     disabled={requestBusy}
-                    className="w-full px-3 py-2 rounded-lg bg-deep-violet/80 text-white text-sm font-medium hover:bg-deep-violet disabled:opacity-50"
+                    className="w-full px-3 py-2 rounded-lg bg-deep-violet/80 text-white text-[12px] font-medium hover:bg-deep-violet disabled:opacity-50"
                   >
                     {requestBusy ? "신청 중..." : latestRequest ? "유료 보고서 다시 신청하기" : "유료 보고서 신청하기"}
                   </button>
@@ -323,7 +491,7 @@ export default function PremiumReportCTA({
                 <button
                   type="button"
                   onClick={handleDownload}
-                  className="w-full px-3 py-2 rounded-lg bg-electric-blue/80 text-white text-sm font-medium hover:bg-electric-blue"
+                  className="w-full px-3 py-2 rounded-lg bg-electric-blue/80 text-white text-[12px] font-medium hover:bg-electric-blue"
                 >
                   나의 자깨 감응 보고서 다운로드
                 </button>
@@ -331,10 +499,8 @@ export default function PremiumReportCTA({
             </div>
           )}
 
-          {(authError || requestError || requestMessage) && (
-            <p className={`text-xs ${authError || requestError ? "text-red-400" : "text-slate-400"}`}>
-              {authError || requestError || requestMessage}
-            </p>
+          {(authError || requestError) && (
+            <p className="text-[12px] text-red-400">{authError || requestError}</p>
           )}
         </div>
       )}

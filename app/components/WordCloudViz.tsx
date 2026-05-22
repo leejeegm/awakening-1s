@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { withTimeout } from "@/lib/requestTimeout";
 import { X } from "lucide-react";
+import ImageComicGeneratorModal from "@/app/components/ImageComicGeneratorModal";
 
 const NICKNAME_STORAGE_KEY = "lastRecordNickname";
 
@@ -55,7 +56,7 @@ function fontSizeFromShare(value: number, totalSum: number, wordLength: number):
   let size = 12 + clamped * 36;
   if (wordLength > 6) size *= 0.85;
   if (wordLength > 10) size *= 0.9;
-  return Math.round(Math.max(11, Math.min(24, size)));
+  return Math.round(Math.max(12, Math.min(24, size)));
 }
 
 function WordCloudPanel({
@@ -134,9 +135,12 @@ function WordCloudPanel({
   );
 }
 
-type Props = { lastRecordNickname?: string };
+type Props = {
+  lastRecordNickname?: string;
+  participantAuthHash?: string;
+};
 
-export default function WordCloudViz({ lastRecordNickname = "" }: Props) {
+export default function WordCloudViz({ lastRecordNickname = "", participantAuthHash = "" }: Props) {
   const [allNotes, setAllNotes] = useState<string[]>([]);
   const [myNotes, setMyNotes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -146,6 +150,8 @@ export default function WordCloudViz({ lastRecordNickname = "" }: Props) {
     records: RecordRow[];
     loading: boolean;
   } | null>(null);
+  const [genOpen, setGenOpen] = useState(false);
+  const [genBaseText, setGenBaseText] = useState("");
 
   useEffect(() => {
     const nick = (lastRecordNickname || "").trim();
@@ -283,9 +289,9 @@ export default function WordCloudViz({ lastRecordNickname = "" }: Props) {
       {/* 키워드 클릭 시 해당 키워드가 포함된 기록 최대 5건 표시 */}
       {keywordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-[min(96vw,28rem)] min-w-[17rem] min-h-[12rem] max-w-[98vw] max-h-[90vh] overflow-hidden flex flex-col resize both">
             <div className="flex items-center justify-between p-3 border-b border-slate-700">
-              <h3 className="text-sm font-semibold text-slate-200">
+              <h3 className="text-[12px] font-semibold text-slate-200">
                 &quot;{keywordModal.keyword}&quot; 포함 기록 (최대 5건)
               </h3>
               <button
@@ -318,9 +324,37 @@ export default function WordCloudViz({ lastRecordNickname = "" }: Props) {
                 </ul>
               )}
             </div>
+            <div className="p-3 border-t border-slate-700 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const notes = keywordModal.records.map((r) => r.note).join("\n");
+                  setGenBaseText(
+                    `키워드: ${keywordModal.keyword}\n\n${notes || "관련 기록을 바탕으로 한 장 컷 또는 4면 웹툰으로 표현해 주세요."}`
+                  );
+                  setGenOpen(true);
+                }}
+                disabled={!effectiveNickname.trim()}
+                className="text-[12px] px-3 py-1.5 rounded-lg bg-deep-violet/60 text-slate-100 hover:bg-deep-violet/80 disabled:opacity-50"
+                title="유료: 내 기록·키워드 기반 이미지·4면 웹툰"
+              >
+                유료 이미지/웹툰 그리기
+              </button>
+              {!effectiveNickname.trim() && (
+                <span className="text-[12px] text-slate-500 self-center">닉네임으로 기록 후 이용 가능</span>
+              )}
+            </div>
           </div>
         </div>
       )}
+
+      <ImageComicGeneratorModal
+        open={genOpen}
+        onClose={() => setGenOpen(false)}
+        nickname={effectiveNickname}
+        authHash={participantAuthHash}
+        baseText={genBaseText}
+      />
     </>
   );
 }

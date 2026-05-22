@@ -13,6 +13,11 @@ body {
   font-size: 12px;
 }
 
+/* UI 최소 가독 폰트 (12px 이상) */
+.text-min-ui {
+  font-size: max(12px, 0.75rem);
+}
+
 .text-emphasis {
   font-size: 12px;
   font-weight: 700;
