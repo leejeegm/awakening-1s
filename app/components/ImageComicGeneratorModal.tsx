@@ -223,7 +223,23 @@ function formatLocalGenerationError(error: unknown, engineUrl?: string, engineNa
     return `${engineName} 응답 시간이 초과되었습니다. 주소는 맞지만 엔진이 바쁘거나 생성 시간이 길 수 있습니다. 잠시 후 다시 시도해 주세요.`;
   }
   if (error instanceof TypeError) {
-    return `${engineName}는 이 브라우저에서 ${target} 로 직접 접속합니다. 브라우저의 로컬/사설 네트워크 접근 허용이 필요하고, 해당 주소에서 엔진이 실행 중이어야 합니다. 휴대폰 접속에서는 같은 기기의 엔진이 아니면 보통 동작하지 않습니다.`;
+    const onDeployedSite =
+      typeof window !== "undefined" &&
+      !["localhost", "127.0.0.1"].includes(window.location.hostname);
+    const pointsToLoopback = (engineUrl ?? "").includes("127.0.0.1") || (engineUrl ?? "").includes("localhost");
+    if (onDeployedSite && pointsToLoopback) {
+      return [
+        `${engineName}에 연결하지 못했습니다.`,
+        "지금 사이트는 인터넷(배포) 주소로 열려 있고, `127.0.0.1`은 **이 기기(휴대폰·다른 PC)** 의 주소입니다. 이미지 PC에서 Stable Diffusion WebUI를 켠 뒤,",
+        "① 같은 PC의 브라우저로 사이트를 열거나 ② 「서버(승인·유료)」 생성을 쓰거나 ③ PC IP(예: http://192.168.0.10:7860)로 엔진 주소를 바꿔 주세요.",
+        "PC에서 쓸 때: WebUI 실행 옵션에 `--api --cors-allow-origins=*` 가 필요하고, Chrome이 「로컬 네트워크 접근」을 물으면 허용해 주세요.",
+      ].join(" ");
+    }
+    return [
+      `${engineName}에 연결하지 못했습니다 (${target}).`,
+      "① Stable Diffusion WebUI(A1111)가 실행 중인지 ② 주소가 맞는지(기본 http://127.0.0.1:7860) ③ WebUI 실행 시 `--api --cors-allow-origins=*` 옵션 ④ 브라우저 「로컬/사설 네트워크 접근」 허용",
+      "먼저 「연결 확인」 버튼으로 테스트한 뒤 생성해 보세요.",
+    ].join(" ");
   }
   if (error instanceof Error) return error.message;
   return String(error);
