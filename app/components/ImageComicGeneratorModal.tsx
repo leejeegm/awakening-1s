@@ -744,6 +744,8 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
   >([]);
   const [cacheHit, setCacheHit] = useState(false);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
+  const [serverFeatures, setServerFeatures] = useState<Record<string, boolean>>({});
+  const [engineAdvancedOpen, setEngineAdvancedOpen] = useState(false);
 
   /** participant_keys 닉네임과 동일 대소문자 유지 (인증용) */
   const apiNickname = useMemo(() => (nickname ?? "").trim().slice(0, 20), [nickname]);
@@ -863,6 +865,24 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
       );
     } catch {}
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !authHash.trim() || !apiNickname) {
+      setServerFeatures({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const res = await fetch(
+        `/api/entitlements?nickname=${encodeURIComponent(apiNickname)}&authHash=${encodeURIComponent(authHash.trim())}`
+      );
+      const json = (await res.json().catch(() => ({}))) as { features?: Record<string, boolean> };
+      if (!cancelled && res.ok) setServerFeatures(json.features ?? {});
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, apiNickname, authHash]);
 
   useEffect(() => {
     if (!open) return;
@@ -1410,36 +1430,118 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
           </button>
         </div>
         <div className="p-4 space-y-3 overflow-y-auto">
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-xs text-slate-500">생성 방식</span>
-            <button
-              type="button"
-              onClick={() => setMode("local")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                mode === "local"
-                  ? "bg-electric-blue/25 text-electric-blue border-electric-blue/40"
-                  : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700"
-              }`}
-            >
-              로컬(무료)
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("server")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                mode === "server"
-                  ? "bg-deep-violet/25 text-deep-violet border-deep-violet/40"
-                  : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700"
-              }`}
-            >
-              서버(유료·승인)
-            </button>
-            <span className="text-[11px] text-slate-600">
-              로컬은 현재 이 브라우저에서 접근 가능한 엔진 주소를 사용합니다. 같은 PC의 `127.0.0.1`뿐 아니라 별도 이미지 서버 IP도 입력할 수 있습니다.
-            </span>
+          <div className="rounded-lg border border-slate-700/80 bg-slate-800/40 p-3 space-y-2">
+            <p className="text-xs text-slate-400">1. 어떤 형태로 만들까요?</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setFeature("image_cut")}
+                className={`flex-1 min-w-[9rem] px-3 py-2 rounded-lg text-xs font-medium border transition ${
+                  feature === "image_cut"
+                    ? "bg-slate-700/70 text-slate-100 border-slate-500"
+                    : "bg-slate-900 text-slate-400 border-slate-700 hover:bg-slate-800"
+                }`}
+              >
+                한 장 이미지
+              </button>
+              <button
+                type="button"
+                onClick={() => setFeature("comic_4panel")}
+                className={`flex-1 min-w-[9rem] px-3 py-2 rounded-lg text-xs font-medium border transition ${
+                  feature === "comic_4panel"
+                    ? "bg-slate-700/70 text-slate-100 border-slate-500"
+                    : "bg-slate-900 text-slate-400 border-slate-700 hover:bg-slate-800"
+                }`}
+              >
+                4컷 웹툰 (2×2 한 장)
+              </button>
+            </div>
+            {feature === "comic_4panel" && (
+              <p className="text-[11px] text-slate-500">
+                2×2 그리드 한 장을 만든 뒤 화면에서 4컷으로 나눕니다. 처음에는 <strong className="text-slate-400">A1111 기본</strong> 프리셋을 권장합니다.
+              </p>
+            )}
           </div>
+
+          <div className="rounded-lg border border-slate-700/80 bg-slate-800/40 p-3 space-y-2">
+            <p className="text-xs text-slate-400">2. 어디서 생성할까요?</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setMode("local")}
+                className={`flex-1 min-w-[9rem] px-3 py-2 rounded-lg text-xs font-medium border transition ${
+                  mode === "local"
+                    ? "bg-electric-blue/25 text-electric-blue border-electric-blue/40"
+                    : "bg-slate-900 text-slate-400 border-slate-700 hover:bg-slate-800"
+                }`}
+              >
+                내 PC (무료)
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("server")}
+                disabled={!serverFeatures[feature]}
+                className={`flex-1 min-w-[9rem] px-3 py-2 rounded-lg text-xs font-medium border transition disabled:opacity-45 disabled:cursor-not-allowed ${
+                  mode === "server"
+                    ? "bg-deep-violet/25 text-deep-violet border-deep-violet/40"
+                    : "bg-slate-900 text-slate-400 border-slate-700 hover:bg-slate-800"
+                }`}
+              >
+                서버 (승인·유료)
+              </button>
+            </div>
+            {mode === "local" && (
+              <p className="text-[11px] text-slate-500">
+                이 브라우저가 접속 가능한 주소의 이미지 엔진이 필요합니다. (보통 같은 PC의 `http://127.0.0.1:7860`)
+              </p>
+            )}
+            {mode === "server" && !serverFeatures[feature] && (
+              <p className="text-[11px] text-amber-300">
+                서버 생성은 관리자 승인 후 사용할 수 있습니다. 우선 「내 PC」로 테스트하거나 관리자에게 기능 승인을 요청하세요.
+              </p>
+            )}
+            {mode === "server" && serverFeatures[feature] && !authHash.trim() && (
+              <p className="text-[11px] text-amber-300">
+                「내 자각 실험 결과 보기」에서 닉네임·비밀번호 조회 후 서버 생성을 사용할 수 있습니다.
+              </p>
+            )}
+          </div>
+
           {mode === "local" && (
             <div className="space-y-2">
+              <label className="block">
+                <span className="text-xs text-slate-400">엔진 주소 (간편)</span>
+                <input
+                  value={localEngineUrl}
+                  onChange={(e) => {
+                    setLocalEngineUrl(e.target.value);
+                    setLocalEngineTestResult(null);
+                  }}
+                  placeholder="http://127.0.0.1:7860"
+                  className="mt-1 w-full px-3 py-2 rounded bg-slate-800 border border-slate-600 text-slate-100 text-sm"
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={testLocalEngineConnection}
+                  disabled={localEngineTestBusy}
+                  className="px-3 py-1.5 rounded-lg text-xs bg-slate-700 text-slate-200 hover:bg-slate-600 disabled:opacity-50"
+                >
+                  {localEngineTestBusy ? "확인 중..." : "연결 확인"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEngineAdvancedOpen((v) => !v)}
+                  className="px-3 py-1.5 rounded-lg text-xs border border-slate-600 text-slate-300 hover:bg-slate-800"
+                >
+                  {engineAdvancedOpen ? "고급 설정 닫기" : "엔진 고급 설정 (ComfyUI 등)"}
+                </button>
+              </div>
+            </div>
+          )}
+          {mode === "local" && engineAdvancedOpen && (
+            <div className="space-y-2 rounded-lg border border-slate-700 p-3 bg-slate-950/50">
               <label className="block">
                 <span className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
                   <span>로컬/별도 엔진 주소</span>
@@ -2001,45 +2103,9 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
               </p>
             </div>
           )}
-          {mode === "server" && !authHash.trim() && (
-            <p className="text-[11px] text-amber-300">
-              서버 생성·히스토리는 보안을 위해 「내 자각 실험 결과 보기」에서 닉네임·비밀번호 조회에 성공한 뒤에만 사용할 수 있습니다.
-            </p>
-          )}
-          {mode === "server" && authHash.trim() && (
-            <p className="text-[11px] text-slate-500">
-              서버 생성 승인 여부는 관리자 메뉴의 `기능 승인(유료) 토글`에서 관리됩니다. 관리자 승인 후에는 이 창에서 다시 생성하면 바로 반영됩니다.
-            </p>
-          )}
-
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-xs text-slate-500">형태</span>
-            <button
-              type="button"
-              onClick={() => setFeature("image_cut")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                feature === "image_cut"
-                  ? "bg-slate-700/70 text-slate-200 border-slate-600"
-                  : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700"
-              }`}
-            >
-              한 장 이미지 컷
-            </button>
-            <button
-              type="button"
-              onClick={() => setFeature("comic_4panel")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                feature === "comic_4panel"
-                  ? "bg-slate-700/70 text-slate-200 border-slate-600"
-                  : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700"
-              }`}
-            >
-              4면 분할 웹툰(한 장 그리드)
-            </button>
-          </div>
 
           <label className="block">
-            <span className="text-xs text-slate-400">프롬프트</span>
+            <span className="text-xs text-slate-400">3. 프롬프트</span>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}

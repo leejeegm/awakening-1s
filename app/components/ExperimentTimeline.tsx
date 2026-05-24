@@ -15,14 +15,19 @@ type Props = { lastRecordNickname?: string };
 
 type ReactionCounts = Record<string, { gam: number; eung: number }>;
 
+type TopReactionRow = { id: string; note: string; created_at: string; gam: number; eung: number };
+
+const VIEW_ROTATE_MS = 30_000;
+
 export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
   const [list, setList] = useState<Row[]>([]);
   const [myList, setMyList] = useState<Row[]>([]);
   const [reactions, setReactions] = useState<ReactionCounts>({});
-  const [top10, setTop10] = useState<{ id: string; note: string; created_at: string; gam: number; eung: number }[]>([]);
+  const [top20, setTop20] = useState<TopReactionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadErrorState] = useState(false);
-  const [viewMode, setViewMode] = useState<"list" | "top10">("list");
+  const [viewMode, setViewMode] = useState<"list" | "top20">("list");
+  const [rotatePaused, setRotatePaused] = useState(false);
 
   const fetchList = async () => {
     setLoadErrorState(false);
@@ -60,7 +65,7 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     }
   }, []);
 
-  const fetchTop10 = useCallback(async () => {
+  const fetchTop20 = useCallback(async () => {
     const client = supabase;
     if (!client) return;
     const counts = await fetchReactions();
@@ -68,10 +73,10 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     const sorted = Object.entries(counts)
       .map(([id, c]) => ({ id, total: c.gam + c.eung, ...c }))
       .sort((a, b) => b.total - a.total)
-      .slice(0, 10)
+      .slice(0, 20)
       .map((e) => e.id);
     if (sorted.length === 0) {
-      setTop10([]);
+      setTop20([]);
       return;
     }
     let data: unknown = null;
@@ -81,7 +86,7 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
       ) as { data: { id: string; note: string; created_at: string }[] | null };
       data = res.data;
     } catch {
-      setTop10([]);
+      setTop20([]);
       return;
     }
     const byId = Object.fromEntries(((data ?? []) as { id: string; note: string; created_at: string }[]).map((r) => [r.id, r]));
@@ -91,9 +96,18 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
         const c = counts[id] ?? { gam: 0, eung: 0 };
         return row ? { ...row, gam: c.gam, eung: c.eung } : null;
       })
-      .filter(Boolean) as { id: string; note: string; created_at: string; gam: number; eung: number }[];
-    setTop10(withCounts);
+      .filter(Boolean) as TopReactionRow[];
+    setTop20(withCounts);
   }, [fetchReactions]);
+
+  const selectViewMode = useCallback((mode: "list" | "top20") => {
+    setViewMode(mode);
+    setRotatePaused(false);
+  }, []);
+
+  const pauseRotate = useCallback(() => {
+    setRotatePaused(true);
+  }, []);
 
   useEffect(() => {
     fetchList();
@@ -107,8 +121,8 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
 
   useEffect(() => {
     fetchReactions();
-    fetchTop10();
-  }, [fetchReactions, fetchTop10]);
+    fetchTop20();
+  }, [fetchReactions, fetchTop20]);
 
   useEffect(() => {
     const client = supabase;
@@ -145,21 +159,22 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "reactions" },
         () => {
-          fetchReactions().then(fetchTop10);
+          fetchReactions().then(fetchTop20);
         }
       )
       .subscribe();
     return () => {
       client.removeChannel(channel);
     };
-  }, [fetchReactions, fetchTop10]);
+  }, [fetchReactions, fetchTop20]);
 
   useEffect(() => {
+    if (rotatePaused) return;
     const interval = setInterval(() => {
-      setViewMode((m) => (m === "list" ? "top10" : "list"));
-    }, 12000);
+      setViewMode((m) => (m === "list" ? "top20" : "list"));
+    }, VIEW_ROTATE_MS);
     return () => clearInterval(interval);
-  }, []);
+  }, [rotatePaused]);
 
   const [reactionFeedback, setReactionFeedback] = useState<{ id: string } | null>(null);
 
@@ -170,7 +185,7 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     if (!error) {
       setReactionFeedback({ id: awakeningId });
       fetchReactions();
-      fetchTop10();
+      fetchTop20();
       setTimeout(() => setReactionFeedback(null), 1600);
     }
   };
@@ -260,19 +275,57 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     </p>
   );
 
+  const viewModeTabs = (
+    <div className="flex flex-wrap items-center gap-2 mb-2">
+      <button
+        type="button"
+        onClick={() => selectViewMode("list")}
+        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+          viewMode === "list"
+            ? "bg-electric-blue/25 text-electric-blue border-electric-blue/40"
+            : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700"
+        }`}
+      >
+        전체 리스트
+      </button>
+      <button
+        type="button"
+        onClick={() => selectViewMode("top20")}
+        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+          viewMode === "top20"
+            ? "bg-deep-violet/25 text-deep-violet border-deep-violet/40"
+            : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700"
+        }`}
+      >
+        상위 반응 탑20
+      </button>
+      {rotatePaused ? (
+        <span className="text-[11px] text-amber-300">자동 전환 일시정지 (탭 선택 시 해제)</span>
+      ) : (
+        <span className="text-[11px] text-slate-600">30초마다 자동 전환</span>
+      )}
+    </div>
+  );
+
   const renderFullList = (
     items: Row[],
     title: string,
     emptyMessage: string,
-    options?: { onlyShowMyNickname?: string; hideReactionButtons?: (item: Row) => boolean }
+    options?: {
+      onlyShowMyNickname?: string;
+      hideReactionButtons?: (item: Row) => boolean;
+      showViewTabs?: boolean;
+    }
   ) => {
     const myNick = options?.onlyShowMyNickname?.trim() ?? "";
     // 공개 피드에서는 nickname을 null로 내려 익명 유지
     const showNickname = (nick: string | null) => !!nick && (!myNick || nick.trim() === myNick);
     const hideReactions = options?.hideReactionButtons ?? (() => false);
+    const showViewTabs = options?.showViewTabs ?? false;
     return (
-      <div className="mb-4">
+      <div className="mb-4" onPointerDown={showViewTabs ? pauseRotate : undefined}>
         <h3 className="text-xs font-medium text-slate-500 mb-2">{title}</h3>
+        {showViewTabs && viewModeTabs}
         {reactionLegend}
         {items.length === 0 ? (
           <p className="py-4 text-center text-slate-500 text-sm">{emptyMessage}</p>
@@ -282,6 +335,7 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
               <li
                 key={item.id}
                 className="p-3 rounded-lg bg-slate-800/60 border border-slate-700/50"
+                onPointerDown={pauseRotate}
               >
                 <div className="flex justify-between items-start gap-2">
                   {showNickname(item.nickname) ? (
@@ -327,18 +381,19 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     );
   };
 
-  const renderTop10 = () => (
-    <div className="mb-4">
-      <h3 className="text-xs font-medium text-slate-500 mb-2">상위 반응 탑10 (실시간)</h3>
+  const renderTop20 = () => (
+    <div className="mb-4" onPointerDown={pauseRotate}>
+      <h3 className="text-xs font-medium text-slate-500 mb-2">상위 반응 탑20 (실시간)</h3>
       {reactionLegend}
-      {top10.length === 0 ? (
+      {top20.length === 0 ? (
         <p className="py-4 text-center text-slate-500 text-sm">아직 반응이 없습니다. 감·응을 눌러 보세요.</p>
       ) : (
         <ul className="space-y-3 max-h-56 overflow-y-auto">
-          {top10.map((item) => (
+          {top20.map((item) => (
             <li
               key={item.id}
               className="p-3 rounded-lg bg-slate-800/60 border border-slate-700/50"
+              onPointerDown={pauseRotate}
             >
               <p className="text-sm text-slate-300 break-words">{item.note}</p>
               <div className="mt-2 flex gap-2 items-center relative">
@@ -379,7 +434,7 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
             myList,
             "내 자각 실험 결과 (실시간)",
             "이 닉네임으로 남긴 기록이 없습니다.",
-            { hideReactionButtons: () => true }
+            { hideReactionButtons: () => true, showViewTabs: false }
           )}
           {viewMode === "list"
             ? renderFullList(
@@ -389,9 +444,15 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
                 {
                   onlyShowMyNickname: lastRecordNickname,
                   hideReactionButtons: (item) => item.nickname?.trim() === lastRecordNickname.trim(),
+                  showViewTabs: true,
                 }
               )
-            : renderTop10()}
+            : (
+              <>
+                <div className="mb-2">{viewModeTabs}</div>
+                {renderTop20()}
+              </>
+            )}
         </>
       )}
       {!lastRecordNickname.trim() && (
@@ -416,9 +477,15 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
                     {
                       onlyShowMyNickname: lastRecordNickname,
                       hideReactionButtons: (item) => item.nickname?.trim() === lastRecordNickname.trim(),
+                      showViewTabs: true,
                     }
                   )
-                : renderTop10()}
+                : (
+                  <>
+                    <div className="mb-2">{viewModeTabs}</div>
+                    {renderTop20()}
+                  </>
+                )}
             </>
           )}
         </>
