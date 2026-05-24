@@ -7,9 +7,10 @@ import { sanitizeAiUserText } from "@/lib/aiUserText";
 
 type Props = {
   lastRecordNickname?: string;
+  participantAuthHash?: string;
 };
 
-export default function InsightCard({ lastRecordNickname = "" }: Props) {
+export default function InsightCard({ lastRecordNickname = "", participantAuthHash = "" }: Props) {
   const [card, setCard] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -18,10 +19,20 @@ export default function InsightCard({ lastRecordNickname = "" }: Props) {
     setCard(null);
     setError(false);
     setLoading(true);
-    const q = lastRecordNickname
-      ? `?nickname=${encodeURIComponent(lastRecordNickname)}`
-      : "";
-    fetch(`/api/ai/insight${q}`)
+    const nick = lastRecordNickname.trim();
+  const hash = participantAuthHash.trim();
+  if (nick && !hash) {
+    setCard(null);
+    setError(false);
+    setLoading(false);
+    return;
+  }
+    const params = new URLSearchParams();
+    if (nick) {
+      params.set("nickname", nick);
+      params.set("authHash", hash);
+    }
+    fetch(`/api/ai/insight?${params.toString()}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.card) {
@@ -30,7 +41,7 @@ export default function InsightCard({ lastRecordNickname = "" }: Props) {
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [lastRecordNickname]);
+  }, [lastRecordNickname, participantAuthHash]);
 
   if (loading) {
     return (

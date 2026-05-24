@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { toAiGeneratedContentType } from "@/lib/aiGeneratedContentTypes";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireParticipantAuth } from "@/lib/participantApiAuth";
+import { toAiGeneratedContentType } from "@/lib/aiGeneratedContentTypes";
 
 export async function GET(request: NextRequest) {
   const admin = getSupabaseAdmin();
@@ -10,12 +11,16 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const nickname = searchParams.get("nickname")?.trim() ?? "";
+  const authHash = (searchParams.get("authHash") ?? "").trim();
   const type = searchParams.get("type")?.trim() || ""; // insight_card | warm_message | weekly_summary (빈 값이면 전체)
   const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20", 10) || 20));
 
   if (!nickname) {
     return NextResponse.json({ error: "nickname이 필요합니다.", items: [] }, { status: 400 });
   }
+
+  const auth = await requireParticipantAuth(nickname, authHash);
+  if (!auth.ok) return auth.response;
 
   const contentType = type ? toAiGeneratedContentType(type) : null;
 

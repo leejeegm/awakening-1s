@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getClientIp } from "@/lib/requestIp";
+import { sha256Hex } from "@/lib/secureCompare";
+import {
+  clearParticipantVerifyFailures,
+  isParticipantVerifyLocked,
+  recordParticipantVerifyFailure,
+} from "@/lib/participantVerifyRateLimit";
+import type { Database } from "@/types/supabase";
 
-function sha256Hex(text: string): string {
-  return createHash("sha256").update(text, "utf8").digest("hex");
-}
+type AwakeningRow = Database["public"]["Tables"]["awakenings"]["Row"];
 
-/** 닉네임+비밀번호 검증 (타인 기록 조회·감응 닉네임·실험 종료 등에 사용) */
+/** 닉네임+비밀번호 검증 (타인 기록 조회·실험 종료 등) */
 export async function POST(request: NextRequest) {
   const admin = getSupabaseAdmin();
   if (!admin) {
@@ -24,6 +29,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "닉네임과 비밀번호를 입력해 주세요." }, { status: 400 });
   }
 
+  const ip = getClientIp(request);
+  if (isParticipantVerifyLocked(ip, nickname)) {
+    return NextResponse.json(
+      { ok: false, error: "시도 횟수가 많습니다. 잠시 후 다시 시도해 주세요." },
+      { status: 429 }
+    );
+  }
+
   const { data: row, error } = await admin
     .from("participant_keys")
     .select("password_hash")
@@ -34,12 +47,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "확인에 실패했습니다." }, { status: 500 });
   }
   if (!row) {
+    recordParticipantVerifyFailure(ip, nickname);
     return NextResponse.json({ ok: false, error: "해당 닉네임이 없거나 비밀번호가 일치하지 않습니다." }, { status: 401 });
   }
   const hash = sha256Hex(password);
   const keyRow = row as { password_hash?: string | null };
-  if (!keyRow.password_hash || keyRow.password_hash !== hash) {
+  if (!keyRow.password_hash || keyRow.password_hash.toLowerCase() !== hash) {
+    recordParticipantVerifyFailure(ip, nickname);
     return NextResponse.json({ ok: false, error: "비밀번호가 일치하지 않습니다." }, { status: 401 });
   }
-  return NextResponse.json({ ok: true });
+
+  clearParticipantVerifyFailures(ip, nickname);
+  return NextResponse.json({ ok: true, authHash: hash });
 }

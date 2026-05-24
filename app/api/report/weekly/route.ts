@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireParticipantAuth } from "@/lib/participantApiAuth";
 import { getWeekRangeKST } from "@/lib/weekRange";
 import { buildRuleBasedWeeklySummary } from "@/lib/ruleBasedAi";
 import { geminiGenerateText } from "@/lib/gemini";
@@ -202,6 +203,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const nickname = searchParams.get("nickname")?.trim() ?? "";
+  const authHash = (searchParams.get("authHash") ?? "").trim();
   const week = searchParams.get("week") ?? ""; // YYYY-MM-DD (일요일)
   const download = searchParams.get("download") === "1";
 
@@ -211,6 +213,9 @@ export async function GET(request: NextRequest) {
   if (!week || !/^\d{4}-\d{2}-\d{2}$/.test(week)) {
     return NextResponse.json({ error: "week(YYYY-MM-DD, 주의 일요일)이 필요합니다." }, { status: 400 });
   }
+
+  const auth = await requireParticipantAuth(nickname, authHash);
+  if (!auth.ok) return auth.response;
 
   const { from, to, label } = getWeekRangeKST(week);
 

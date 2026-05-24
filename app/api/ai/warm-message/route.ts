@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireParticipantAuth } from "@/lib/participantApiAuth";
 import { buildRuleBasedWarmMessage } from "@/lib/ruleBasedAi";
 import { geminiGenerateText } from "@/lib/gemini";
 import { chooseAiUserText } from "@/lib/aiUserText";
@@ -25,6 +26,7 @@ function getTodayKSTRange(): { from: string; to: string } {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const nickname = searchParams.get("nickname")?.trim() ?? "";
+  const authHash = (searchParams.get("authHash") ?? "").trim();
   const durationType = searchParams.get("durationType")?.trim() || "1s";
   const validDuration = ["1s", "10s", "100s"].includes(durationType) ? durationType : "1s";
 
@@ -34,6 +36,9 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  const auth = await requireParticipantAuth(nickname, authHash);
+  if (!auth.ok) return auth.response;
 
   const admin = getSupabaseAdmin();
   if (!admin) {

@@ -68,6 +68,14 @@ export async function POST(request: NextRequest) {
   if (!featureKey) return NextResponse.json({ error: "featureKey가 필요합니다." }, { status: 400 });
   if (!prompt) return NextResponse.json({ error: "프롬프트가 필요합니다." }, { status: 400 });
 
+  const engineUrl = process.env.IMAGE_ENGINE_URL ?? "";
+  if (!engineUrl) {
+    return NextResponse.json(
+      { error: "서버 이미지 엔진이 설정되지 않았습니다. IMAGE_ENGINE_URL을 확인하세요." },
+      { status: 503 }
+    );
+  }
+
   const gate = await isFeatureEnabledForNickname(nickname, featureKey);
   if (!gate.ok) {
     return NextResponse.json(
@@ -135,14 +143,6 @@ export async function POST(request: NextRequest) {
         monthlyLimit: limitRes.monthlyLimit,
       },
       { status: 429 }
-    );
-  }
-
-  const engineUrl = process.env.IMAGE_ENGINE_URL ?? "";
-  if (!engineUrl) {
-    return NextResponse.json(
-      { error: "서버 이미지 엔진이 설정되지 않았습니다. IMAGE_ENGINE_URL을 확인하세요." },
-      { status: 503 }
     );
   }
 

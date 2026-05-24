@@ -191,34 +191,19 @@ export async function POST(
     approved_by: nextApprovedBy,
   };
 
-  const { error } = await admin
-    .from("premium_report_requests")
-    .update(patch as never)
-    .eq("id", params.id);
+  const { error } = await admin.rpc("apply_premium_report_status" as never, {
+    p_request_id: params.id,
+    p_status: patch.status,
+    p_payment_status: patch.payment_status,
+    p_admin_note: patch.admin_note,
+    p_downloadable: patch.downloadable,
+    p_downloadable_at: patch.downloadable_at,
+    p_approved_at: patch.approved_at,
+    p_approved_by: patch.approved_by,
+    p_action_meta: patch,
+  } as never);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const entitlementResult = await admin.from("participant_entitlements").upsert(
-    {
-      nickname: currentRow.nickname,
-      feature_key: "premium_report_download",
-      enabled: nextDownloadable,
-      source: "admin",
-      enabled_by: "admin",
-      expires_at: null,
-    } as never,
-    { onConflict: "nickname,feature_key" }
-  );
-  if (entitlementResult.error) {
-    return NextResponse.json({ error: entitlementResult.error.message }, { status: 500 });
-  }
-
-  await admin.from("premium_report_actions").insert({
-    request_id: params.id,
-    action: "status_changed",
-    actor: "admin",
-    meta_json: patch,
-  } as never);
 
   return NextResponse.json({ ok: true });
 }

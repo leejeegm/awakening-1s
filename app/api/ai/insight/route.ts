@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireParticipantAuth } from "@/lib/participantApiAuth";
 import { buildRuleBasedInsightCard } from "@/lib/ruleBasedAi";
 import { geminiGenerateText } from "@/lib/gemini";
 import { chooseAiUserText } from "@/lib/aiUserText";
@@ -12,6 +13,7 @@ type AwRow = { note: string; duration_type: string | null };
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const nickname = searchParams.get("nickname")?.trim() ?? "";
+  const authHash = (searchParams.get("authHash") ?? "").trim();
 
   const admin = getSupabaseAdmin();
   if (!admin) {
@@ -23,6 +25,9 @@ export async function GET(request: NextRequest) {
 
   let rows: AwRow[] = [];
   if (nickname) {
+    const auth = await requireParticipantAuth(nickname, authHash);
+    if (!auth.ok) return auth.response;
+
     const { data: byNick } = await admin
       .from("awakenings")
       .select("note, duration_type")
@@ -34,6 +39,8 @@ export async function GET(request: NextRequest) {
     const { data: allRows } = await admin
       .from("awakenings")
       .select("note, duration_type")
+      .eq("is_public", true)
+      .eq("moderation_state", "ok")
       .order("created_at", { ascending: false })
       .limit(100);
     rows = (allRows ?? []) as AwRow[];

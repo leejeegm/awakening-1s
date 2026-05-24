@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
   const { data: reqRow, error: reqErr } = await admin
     .from("premium_report_requests")
-    .select("id, nickname, status, downloadable")
+    .select("id, nickname, status, downloadable, expires_at")
     .eq("id", id)
     .eq("nickname", nickname)
     .maybeSingle();
@@ -41,7 +41,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "신청 정보를 찾을 수 없습니다." }, { status: 404 });
   }
 
-  if ((reqRow as { status: string }).status !== "ready" || !(reqRow as { downloadable: boolean }).downloadable) {
+  const row = reqRow as { status: string; downloadable: boolean; expires_at: string | null };
+  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+    return NextResponse.json({ error: "다운로드 기한이 만료되었습니다." }, { status: 403 });
+  }
+
+  if (row.status !== "ready" || !row.downloadable) {
     return NextResponse.json({ error: "아직 다운로드할 수 없습니다." }, { status: 403 });
   }
 
@@ -60,45 +65,50 @@ export async function GET(request: NextRequest) {
     .maybeSingle();
 
   if (!asset) {
-    const { data: document } = await admin
-      .from("premium_report_documents")
-      .select("title, summary_text, sections_json, page_count")
-      .eq("request_id", id)
-      .order("version", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    try {
+      const { data: document } = await admin
+        .from("premium_report_documents")
+        .select("title, summary_text, sections_json, page_count")
+        .eq("request_id", id)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    if (!document) {
-      return NextResponse.json({ error: "최종 PDF가 아직 준비되지 않았습니다." }, { status: 404 });
+      if (!document) {
+        return NextResponse.json({ error: "최종 PDF가 아직 준비되지 않았습니다." }, { status: 404 });
+      }
+
+      const { imageAssets, attachmentPdfs } = await loadPremiumReportPdfAssets(id);
+      const pdf = await buildPremiumReportPdfBuffer({
+        title: (document as { title: string }).title,
+        nickname: rawNickname,
+        summaryText: (document as { summary_text: string | null }).summary_text,
+        pageCount: (document as { page_count: number }).page_count,
+        sections: Array.isArray((document as { sections_json: unknown }).sections_json)
+          ? ((document as { sections_json: unknown[] }).sections_json as {
+              key?: string;
+              title?: string;
+              body?: string;
+            }[])
+          : [],
+        imageAssets,
+        attachmentPdfs,
+      });
+      const mergedPdf = await mergePdfBuffers(
+        pdf,
+        attachmentPdfs.map((asset) => asset.pdfBuffer)
+      );
+
+      return new NextResponse(new Uint8Array(mergedPdf), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="premium-report-${rawNickname}-${id}.pdf"`,
+        },
+      });
+    } catch (e) {
+      console.error("[premium-report/download] PDF fallback failed", e);
+      return NextResponse.json({ error: "PDF 생성 중 오류가 발생했습니다." }, { status: 500 });
     }
-
-    const { imageAssets, attachmentPdfs } = await loadPremiumReportPdfAssets(id);
-    const pdf = await buildPremiumReportPdfBuffer({
-      title: (document as { title: string }).title,
-      nickname: rawNickname,
-      summaryText: (document as { summary_text: string | null }).summary_text,
-      pageCount: (document as { page_count: number }).page_count,
-      sections: Array.isArray((document as { sections_json: unknown }).sections_json)
-        ? ((document as { sections_json: unknown[] }).sections_json as {
-            key?: string;
-            title?: string;
-            body?: string;
-          }[])
-        : [],
-      imageAssets,
-      attachmentPdfs,
-    });
-    const mergedPdf = await mergePdfBuffers(
-      pdf,
-      attachmentPdfs.map((asset) => asset.pdfBuffer)
-    );
-
-    return new NextResponse(new Uint8Array(mergedPdf), {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="premium-report-${rawNickname}-${id}.pdf"`,
-      },
-    });
   }
 
   const bucket = (asset as { storage_bucket: string | null }).storage_bucket;

@@ -465,7 +465,7 @@ export default function Home() {
         <h2 className="text-sm font-medium text-slate-400 mb-2">맞춤 감응카드</h2>
         <SectionErrorBoundary fallbackTitle="AI 인사이트를 불러오는 중 문제가 생겼습니다." onRetry={() => setSectionKeys((prev) => ({ ...prev, insight: prev.insight + 1 }))}>
           <div key={sectionKeys.insight}>
-            <InsightCard lastRecordNickname={lastRecordNickname} />
+            <InsightCard lastRecordNickname={lastRecordNickname} participantAuthHash={participantAuthHash} />
           </div>
         </SectionErrorBoundary>
       </section>
@@ -492,7 +492,7 @@ export default function Home() {
       <section className="px-4 mt-6">
         <SectionErrorBoundary fallbackTitle="주별 보고서를 불러올 수 없습니다." onRetry={() => setSectionKeys((prev) => ({ ...prev, report: prev.report + 1 }))}>
           <div key={sectionKeys.report}>
-            <WeeklyReportSection defaultNickname={lastRecordNickname} />
+            <WeeklyReportSection defaultNickname={lastRecordNickname} participantAuthHash={participantAuthHash} />
           </div>
         </SectionErrorBoundary>
       </section>

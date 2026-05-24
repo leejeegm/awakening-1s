@@ -1,22 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
 import type { Database } from "@/types/supabase";
 import { Lock, X } from "lucide-react";
 
 type AwakeningRow = Database["public"]["Tables"]["awakenings"]["Row"];
-type KeyRow = Database["public"]["Tables"]["participant_keys"]["Row"];
-
-async function sha256Hex(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(text)
-  );
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 type Props = {
   /** 내 기록 보기로 조회 성공 시: 닉네임 + 비밀번호 해시(서버 이미지 등 인증용) */
@@ -55,51 +43,34 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
       setStatus("error");
       return;
     }
-    if (!supabase) {
-      setMessage("Supabase가 설정되지 않았습니다.");
-      setStatus("error");
-      return;
-    }
     setStatus("loading");
     setMessage("");
     try {
-      const hash = await sha256Hex(p);
-      const { data: keyRow } = await supabase
-        .from("participant_keys")
-        .select("password_hash, password_hint")
-        .eq("nickname", n)
-        .maybeSingle() as { data: KeyRow | null };
-
-      if (!keyRow) {
-        if (p !== pc) {
-          setMessage("비밀번호와 비밀번호 확인이 일치하지 않습니다.");
-          setStatus("error");
-          return;
-        }
-        await supabase.from("participant_keys").insert({
+      const res = await fetch("/api/participant/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           nickname: n,
-          password_hash: hash,
-          password_hint: hint.trim() || null,
-        } as never);
-      } else if (keyRow.password_hash !== hash) {
-        setMessage(
-          keyRow.password_hint
-            ? `비밀번호가 일치하지 않습니다. 힌트: ${keyRow.password_hint}`
-            : "비밀번호가 일치하지 않습니다. 처음 조회 시 입력한 비밀번호를 사용해 주세요."
-        );
+          password: p,
+          passwordConfirm: pc,
+          hint: hint.trim() || undefined,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        authHash?: string;
+        items?: AwakeningRow[];
+      };
+      if (!res.ok || !json.ok || !json.authHash) {
+        setMessage(json.error ?? "조회에 실패했습니다.");
         setStatus("error");
         return;
       }
-
-      const feedRes = await fetch(
-        `/api/feed/awakenings?nickname=${encodeURIComponent(n)}&authHash=${encodeURIComponent(hash)}`,
-        { method: "GET" }
-      );
-      const feedJson = (await feedRes.json().catch(() => ({}))) as { items?: AwakeningRow[] };
-      const items = Array.isArray(feedJson.items) ? (feedJson.items as AwakeningRow[]) : [];
+      const items = Array.isArray(json.items) ? json.items : [];
       setRecords(items);
       setStatus("ok");
-      onNicknameVerified?.(n, hash);
+      onNicknameVerified?.(n, json.authHash);
     } catch {
       setMessage("오류가 발생했습니다.");
       setStatus("error");

@@ -115,12 +115,17 @@ export default function GrowthMessage({
       setWarmMessage(null);
       return;
     }
+    if (!participantAuthHash.trim()) {
+      setWarmError("내 기록 보기에서 닉네임·비밀번호 조회 후 이용할 수 있습니다.");
+      setWarmMessage(null);
+      return;
+    }
     setWarmLoading(true);
     setWarmError(null);
     setWarmMessage(null);
     try {
       const res = await fetch(
-        `/api/ai/warm-message?nickname=${encodeURIComponent(nick)}&durationType=${warmDuration}`
+        `/api/ai/warm-message?nickname=${encodeURIComponent(nick)}&durationType=${warmDuration}&authHash=${encodeURIComponent(participantAuthHash.trim())}`
       );
       const data = (await res.json()) as {
         message?: string;
@@ -136,7 +141,7 @@ export default function GrowthMessage({
     } finally {
       setWarmLoading(false);
     }
-  }, [lastRecordNickname, warmDuration]);
+  }, [lastRecordNickname, warmDuration, participantAuthHash]);
 
   const getNickname = useCallback(() => {
     return (lastRecordNickname || "").trim() || (typeof window !== "undefined" ? localStorage.getItem("lastRecordNickname") ?? "" : "").trim();
@@ -149,10 +154,17 @@ export default function GrowthMessage({
       setPastItems([]);
       return;
     }
+    if (!participantAuthHash.trim()) {
+      setPastError("내 기록 보기에서 닉네임·비밀번호 조회 후 이용할 수 있습니다.");
+      setPastItems([]);
+      return;
+    }
     setPastLoading(true);
     setPastError(null);
     try {
-      const res = await fetch(`/api/ai/past-messages?nickname=${encodeURIComponent(nick)}&limit=30`);
+      const res = await fetch(
+        `/api/ai/past-messages?nickname=${encodeURIComponent(nick)}&limit=30&authHash=${encodeURIComponent(participantAuthHash.trim())}`
+      );
       const data = (await res.json()) as { items?: typeof pastItems; error?: string };
       if (!res.ok) {
         setPastError(data.error ?? "불러오기 실패");
@@ -171,7 +183,7 @@ export default function GrowthMessage({
     } finally {
       setPastLoading(false);
     }
-  }, [getNickname]);
+  }, [getNickname, participantAuthHash]);
 
   const wordsWithColors = useMemo(() => {
     const words = splitWords(GROWTH_TEXT);

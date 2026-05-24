@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { verifyParticipantAuthHash } from "@/lib/participantAuth";
 import { normalizeNickname } from "@/lib/entitlements";
 import { PREMIUM_REPORT_PRODUCT_CODE } from "@/lib/premiumReport";
+import { computePremiumReportEligibility } from "@/lib/premiumReportEligibility";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -68,15 +69,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "인증에 실패했습니다.", requiresAuth: true }, { status: 401 });
   }
 
-  const { data: eligibility } = await admin
-    .from("premium_report_eligibility_snapshots")
-    .select("qualifies")
-    .eq("nickname", nickname)
-    .maybeSingle();
-
-  if (!(eligibility as { qualifies?: boolean } | null)?.qualifies) {
+  const eligibilityResult = await computePremiumReportEligibility(admin, rawNickname);
+  if (!eligibilityResult.ok) {
+    return NextResponse.json({ error: eligibilityResult.error }, { status: 500 });
+  }
+  if (!eligibilityResult.evaluation.qualifies) {
     return NextResponse.json({ error: "아직 신청 조건을 충족하지 않았습니다." }, { status: 403 });
   }
+
+  await admin.from("premium_report_eligibility_snapshots").upsert(
+    {
+      nickname,
+      qualifies: true,
+      consecutive_weeks: eligibilityResult.evaluation.consecutiveWeeks,
+      qualifies_from_week: eligibilityResult.evaluation.qualifiesFromWeek,
+      evaluated_at: new Date().toISOString(),
+      weekly_day_counts_json: eligibilityResult.evaluation.weeklyDayCounts,
+      meta_json: {
+        qualifiesWeekly: eligibilityResult.evaluation.qualifiesWeekly,
+        qualifiesRolling: eligibilityResult.evaluation.qualifiesRolling,
+        rolling: eligibilityResult.evaluation.rolling,
+      },
+    } as never,
+    { onConflict: "nickname" }
+  );
 
   const { data: product } = await admin
     .from("premium_report_products")
@@ -120,6 +136,25 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
+    if (error.code === "23505") {
+      const { data: dup } = await admin
+        .from("premium_report_requests")
+        .select("id, status, payment_status")
+        .eq("nickname", nickname)
+        .in("status", ["requested", "paid_pending", "approved", "in_progress", "ready"] as never)
+        .order("requested_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (dup) {
+        return NextResponse.json({
+          ok: true,
+          requestId: (dup as { id: string }).id,
+          status: (dup as { status: string }).status,
+          paymentStatus: (dup as { payment_status: string }).payment_status,
+          alreadyExists: true,
+        });
+      }
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

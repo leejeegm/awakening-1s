@@ -17,9 +17,15 @@ type ReportData = {
   canDownload: boolean;
 };
 
-type Props = { defaultNickname?: string };
+type Props = {
+  defaultNickname?: string;
+  participantAuthHash?: string;
+};
 
-export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
+export default function WeeklyReportSection({
+  defaultNickname = "",
+  participantAuthHash = "",
+}: Props) {
   const [nickname, setNickname] = useState(defaultNickname);
 
   // 현재 로그인(기록 저장) 중인 닉네임이 바뀌면 입력란을 그 닉네임으로 맞춤
@@ -34,19 +40,80 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [otherPassword, setOtherPassword] = useState("");
   const [verifiedOtherNicknames, setVerifiedOtherNicknames] = useState<Set<string>>(new Set());
+  const [otherAuthHashes, setOtherAuthHashes] = useState<Record<string, string>>({});
 
   const isOtherNickname =
     nickname.trim() !== "" &&
     defaultNickname.trim() !== "" &&
     nickname.trim().toLowerCase() !== defaultNickname.trim().toLowerCase();
 
-  const doLoadReport = async () => {
+  const resolveAuthHash = (): string | null => {
+    const nick = nickname.trim();
+    if (!nick) return null;
+    if (
+      participantAuthHash.trim() &&
+      defaultNickname.trim() &&
+      nick.toLowerCase() === defaultNickname.trim().toLowerCase()
+    ) {
+      return participantAuthHash.trim();
+    }
+    if (typeof window !== "undefined") {
+      const stored = sessionStorage.getItem(`participant_auth_hash_v1:${nick}`);
+      if (stored) return stored;
+    }
+    return otherAuthHashes[nick.toLowerCase()] ?? null;
+  };
+
+  const loadReport = async () => {
+    if (!nickname.trim()) {
+      setError("닉네임을 입력하세요.");
+      return;
+    }
+
+    let authHash: string | null = null;
+
+    if (isOtherNickname) {
+      if (!verifiedOtherNicknames.has(nickname.trim().toLowerCase())) {
+        if (!otherPassword.trim()) {
+          setError("다른 닉네임의 기록은 개인정보 보호를 위해 해당 닉네임의 비밀번호를 입력해 주세요.");
+          return;
+        }
+        const verifyRes = await fetch("/api/participant/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nickname: nickname.trim(), password: otherPassword }),
+        });
+        const verifyJson = (await verifyRes.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+          authHash?: string;
+        };
+        if (!verifyRes.ok || !verifyJson.ok || !verifyJson.authHash) {
+          setError(verifyJson.error ?? "비밀번호가 일치하지 않습니다.");
+          return;
+        }
+        const key = nickname.trim().toLowerCase();
+        authHash = verifyJson.authHash;
+        setVerifiedOtherNicknames((prev) => new Set([...Array.from(prev), key]));
+        setOtherAuthHashes((prev) => ({ ...prev, [key]: verifyJson.authHash! }));
+      }
+    }
+
+    if (!authHash) authHash = resolveAuthHash();
+    if (!authHash) {
+      setError("내 기록 보기에서 닉네임·비밀번호 조회 후 이용할 수 있습니다.");
+      return;
+    }
+    await doLoadReport(authHash);
+  };
+
+  const doLoadReport = async (authHash: string) => {
     setError(null);
     setLoading(true);
     setData(null);
     try {
       const res = await fetch(
-        `/api/report/weekly?nickname=${encodeURIComponent(nickname.trim())}&week=${encodeURIComponent(week)}`
+        `/api/report/weekly?nickname=${encodeURIComponent(nickname.trim())}&week=${encodeURIComponent(week)}&authHash=${encodeURIComponent(authHash)}`
       );
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -62,41 +129,17 @@ export default function WeeklyReportSection({ defaultNickname = "" }: Props) {
     }
   };
 
-  const loadReport = async () => {
-    if (!nickname.trim()) {
-      setError("닉네임을 입력하세요.");
-      return;
-    }
-    if (isOtherNickname) {
-      if (!verifiedOtherNicknames.has(nickname.trim().toLowerCase())) {
-        if (!otherPassword.trim()) {
-          setError("다른 닉네임의 기록은 개인정보 보호를 위해 해당 닉네임의 비밀번호를 입력해 주세요.");
-          return;
-        }
-        const verifyRes = await fetch("/api/participant/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nickname: nickname.trim(), password: otherPassword }),
-        });
-        const verifyJson = (await verifyRes.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-        if (!verifyRes.ok || !verifyJson.ok) {
-          setError(verifyJson.error ?? "비밀번호가 일치하지 않습니다.");
-          return;
-        }
-        setVerifiedOtherNicknames((prev) =>
-          new Set([...Array.from(prev), nickname.trim().toLowerCase()])
-        );
-      }
-    }
-    await doLoadReport();
-  };
-
   const downloadPdf = async () => {
     if (!data?.canDownload || !nickname.trim()) return;
+    const authHash = resolveAuthHash();
+    if (!authHash) {
+      alert("인증이 필요합니다. 내 기록 보기에서 닉네임·비밀번호를 확인해 주세요.");
+      return;
+    }
     setDownloading(true);
     try {
       const res = await fetch(
-        `/api/report/weekly?nickname=${encodeURIComponent(nickname.trim())}&week=${encodeURIComponent(week)}&download=1`
+        `/api/report/weekly?nickname=${encodeURIComponent(nickname.trim())}&week=${encodeURIComponent(week)}&download=1&authHash=${encodeURIComponent(authHash)}`
       );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
