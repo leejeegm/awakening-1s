@@ -26,6 +26,8 @@ export async function POST(request: NextRequest) {
     password?: string;
     passwordConfirm?: string;
     hint?: string;
+    /** all=전체, private=나만보기, public=내글공개 */
+    scope?: string;
   };
   try {
     body = await request.json();
@@ -37,6 +39,9 @@ export async function POST(request: NextRequest) {
   const password = (body.password ?? "").trim();
   const passwordConfirm = (body.passwordConfirm ?? "").trim();
   const hint = (body.hint ?? "").trim().slice(0, 100);
+  const scopeRaw = (body.scope ?? "all").trim().toLowerCase();
+  const scope =
+    scopeRaw === "private" || scopeRaw === "public" ? scopeRaw : ("all" as const);
 
   if (!nickname || !password) {
     return NextResponse.json({ ok: false, error: "닉네임과 비밀번호를 모두 입력해 주세요." }, { status: 400 });
@@ -96,11 +101,15 @@ export async function POST(request: NextRequest) {
 
   clearParticipantVerifyFailures(ip, nickname);
 
-  const { data: records, error: recError } = await admin
-    .from("awakenings")
-    .select("*")
-    .eq("nickname", nickname)
-    .order("created_at", { ascending: false });
+  let recordsQuery = admin.from("awakenings").select("*").eq("nickname", nickname);
+  if (scope === "private") {
+    recordsQuery = recordsQuery.eq("is_public", false);
+  } else if (scope === "public") {
+    recordsQuery = recordsQuery.eq("is_public", true);
+  }
+  const { data: records, error: recError } = await recordsQuery.order("created_at", {
+    ascending: false,
+  });
 
   if (recError) {
     return NextResponse.json({ ok: false, error: recError.message }, { status: 500 });
@@ -109,6 +118,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     authHash: hash,
+    scope,
     items: (records ?? []) as AwakeningRow[],
   });
 }

@@ -22,6 +22,7 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [message, setMessage] = useState("");
   const [records, setRecords] = useState<AwakeningRow[]>([]);
+  const [lookupScope, setLookupScope] = useState<"all" | "private" | "public" | null>(null);
 
   const resolveDefaultNickname = () =>
     (defaultNickname ?? "").trim() ||
@@ -33,8 +34,13 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
     setOpen(true);
   };
 
-  const onLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const scopeLabels: Record<"all" | "private" | "public", string> = {
+    all: "전체",
+    private: "나만보기",
+    public: "내글공개",
+  };
+
+  const onLookup = async (scope: "all" | "private" | "public") => {
     const n = nickname.trim();
     const p = password.trim();
     const pc = passwordConfirm.trim();
@@ -45,6 +51,7 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
     }
     setStatus("loading");
     setMessage("");
+    setLookupScope(scope);
     try {
       const res = await fetch("/api/participant/lookup", {
         method: "POST",
@@ -54,6 +61,7 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
           password: p,
           passwordConfirm: pc,
           hint: hint.trim() || undefined,
+          scope,
         }),
       });
       const json = (await res.json().catch(() => ({}))) as {
@@ -82,6 +90,7 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
     setStatus("idle");
     setMessage("");
     setRecords([]);
+    setLookupScope(null);
     setPassword("");
     setPasswordConfirm("");
     setHint("");
@@ -113,9 +122,15 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
             </div>
             <div className="p-4 space-y-4 overflow-y-auto">
               <p className="text-[12px] text-slate-500">
-                닉네임과 비밀번호를 입력하면 해당 닉네임으로 기록한 누적 자각 목록을 볼 수 있습니다. 처음 조회 시 입력한 비밀번호가 해당 닉네임에 저장됩니다. 잊지 마세요. 비밀번호 힌트를 넣어두면 비밀번호를 잊었을 때 힌트가 표시됩니다. 모서리를 드래그하면 창 크기를 조절할 수 있습니다.
+                닉네임과 비밀번호를 입력한 뒤 조회 버튼을 누르면 해당 닉네임의 자각 목록을 볼 수 있습니다. 조회(전체)는 모든 기록, 조회(나만보기)는 저장(나만보기)만, 조회(내글공개)는 공유저장(내글공개)만 표시합니다. 처음 조회 시 입력한 비밀번호가 해당 닉네임에 저장됩니다. 모서리를 드래그하면 창 크기를 조절할 수 있습니다.
               </p>
-              <form onSubmit={onLookup} className="space-y-3">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  onLookup("all");
+                }}
+                className="space-y-3"
+              >
                 <input
                   type="text"
                   placeholder="닉네임"
@@ -146,13 +161,36 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
                   maxLength={30}
                   className="w-full px-4 py-2 min-h-[44px] rounded-lg bg-slate-800 border border-slate-600 text-slate-100 placeholder-slate-500 focus:border-electric-blue outline-none text-base touch-manipulation"
                 />
-                <button
-                  type="submit"
-                  disabled={status === "loading"}
-                  className="w-full min-h-[44px] py-2.5 rounded-lg bg-gradient-resonans text-white font-medium disabled:opacity-60 touch-manipulation"
-                >
-                  {status === "loading" ? "조회 중..." : "조회"}
-                </button>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onLookup("all")}
+                    disabled={status === "loading"}
+                    className="min-h-[44px] py-2.5 rounded-lg bg-gradient-resonans text-white font-medium text-[12px] disabled:opacity-60 touch-manipulation"
+                  >
+                    {status === "loading" && lookupScope === "all" ? "조회 중..." : "조회(전체)"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onLookup("private")}
+                    disabled={status === "loading"}
+                    className="min-h-[44px] py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium text-[12px] disabled:opacity-60 touch-manipulation"
+                  >
+                    {status === "loading" && lookupScope === "private"
+                      ? "조회 중..."
+                      : "조회(나만보기)"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onLookup("public")}
+                    disabled={status === "loading"}
+                    className="min-h-[44px] py-2.5 rounded-lg bg-deep-violet/80 hover:bg-deep-violet text-white font-medium text-[12px] disabled:opacity-60 touch-manipulation"
+                  >
+                    {status === "loading" && lookupScope === "public"
+                      ? "조회 중..."
+                      : "조회(내글공개)"}
+                  </button>
+                </div>
               </form>
               {message && (
                 <p className={`text-[12px] ${status === "error" ? "text-red-400" : "text-slate-400"}`}>
@@ -163,6 +201,7 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
                 <div>
                   <p className="text-[12px] text-slate-400 mb-2">
                     총 {records.length}건
+                    {lookupScope ? ` · ${scopeLabels[lookupScope]}` : ""}
                   </p>
                   <ul className="space-y-2 max-h-48 overflow-y-auto">
                     {records.map((item) => (
