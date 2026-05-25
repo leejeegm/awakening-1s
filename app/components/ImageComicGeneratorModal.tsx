@@ -746,6 +746,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
   const [busy, setBusy] = useState(false);
+  const [serverProgress, setServerProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [panels, setPanels] = useState<string[] | null>(null);
@@ -1158,6 +1159,15 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
     }
   };
 
+  const applyServerUsage = (usage?: {
+    usedToday: number;
+    dailyLimit: number;
+    usedMonth: number;
+    monthlyLimit: number;
+  }) => {
+    if (usage) setUsage(usage);
+  };
+
   const generateServer = async (): Promise<{ url: string; warn?: string }> => {
     if (!authHash.trim()) {
       throw new Error("먼저 「내 자각 실험 결과 보기」에서 닉네임·비밀번호로 조회해 주세요.");
@@ -1177,6 +1187,9 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
         "서버 생성은 관리자 승인 후 사용 가능합니다. 관리자 메뉴 > 기능 승인(유료) 토글에서 해당 기능을 승인한 뒤 다시 생성해 주세요."
       );
     }
+
+    const authQuery = `nickname=${encodeURIComponent(apiNickname)}&authHash=${encodeURIComponent(authHash.trim())}`;
+
     const res = await fetch("/api/ai/image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1189,6 +1202,12 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
       }),
     });
     const json = (await res.json().catch(() => ({}))) as {
+      mode?: "async" | "sync";
+      jobId?: string;
+      pollUrl?: string;
+      pollIntervalMs?: number;
+      pollMaxMs?: number;
+      status?: string;
       imageBase64?: string;
       error?: string;
       requiresAuth?: boolean;
@@ -1197,11 +1216,9 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
       url?: string | null;
       storage?: { bucket: string; path: string };
       storageWarning?: string;
-      usedToday?: number;
-      dailyLimit?: number;
-      usedMonth?: number;
-      monthlyLimit?: number;
+      dimensions?: { width: number; height: number; steps: number };
     };
+
     if (res.status === 401) {
       throw new Error(
         json.requiresAuth
@@ -1219,28 +1236,55 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
       throw new Error(json.error ?? "이미 생성 중입니다. 잠시 후 다시 시도해 주세요.");
     }
     if (!res.ok) throw new Error(json.error ?? "서버 생성 실패");
-    if (json.cached && (json.url || (json.storage?.bucket && json.storage?.path))) {
+
+    if (json.cached && json.url) {
       setCacheHit(true);
       await loadHistory();
-      if (json.url) return { url: json.url };
-      throw new Error("동일 요청 캐시는 있으나 링크 생성에 실패했습니다. 아래 최근 생성에서 확인해 주세요.");
+      return { url: json.url };
     }
+
+    if (json.mode === "async" && json.jobId) {
+      const pollPath = json.pollUrl ?? `/api/ai/image/jobs/${json.jobId}`;
+      const interval = json.pollIntervalMs ?? 2500;
+      const maxMs = json.pollMaxMs ?? 120_000;
+      const started = Date.now();
+      applyServerUsage(json.usage);
+      setServerProgress("서버에서 이미지 생성 중… (Vercel Hobby: 512px·낮은 steps)");
+
+      while (Date.now() - started < maxMs) {
+        const pollRes = await fetch(`${pollPath}?${authQuery}`);
+        const pollJson = (await pollRes.json().catch(() => ({}))) as {
+          status?: string;
+          error?: string;
+          imageBase64?: string;
+          url?: string | null;
+          storageWarning?: string;
+          usage?: { usedToday: number; dailyLimit: number; usedMonth: number; monthlyLimit: number };
+        };
+
+        if (pollJson.status === "done") {
+          setCacheHit(false);
+          applyServerUsage(pollJson.usage);
+          await loadHistory();
+          if (pollJson.imageBase64) {
+            return { url: dataUrlFromBase64(pollJson.imageBase64), warn: pollJson.storageWarning };
+          }
+          if (pollJson.url) return { url: pollJson.url, warn: pollJson.storageWarning };
+          throw new Error("생성은 완료됐지만 결과를 불러오지 못했습니다. 아래 최근 생성을 확인해 주세요.");
+        }
+        if (pollJson.status === "failed") {
+          throw new Error(pollJson.error ?? "서버 생성에 실패했습니다.");
+        }
+        await new Promise((r) => setTimeout(r, interval));
+      }
+      throw new Error(
+        "생성 대기 시간이 초과되었습니다. GPU가 느리면 IMAGE_SERVER_TIMEOUT_MS·해상도를 확인하거나 sync 모드·Vercel Pro를 검토해 주세요."
+      );
+    }
+
     if (!json.imageBase64) throw new Error("서버 생성 결과가 없습니다.");
     setCacheHit(false);
-    if (json.usage) setUsage(json.usage);
-    else if (
-      typeof json.usedToday === "number" &&
-      typeof json.dailyLimit === "number" &&
-      typeof json.usedMonth === "number" &&
-      typeof json.monthlyLimit === "number"
-    ) {
-      setUsage({
-        usedToday: json.usedToday,
-        dailyLimit: json.dailyLimit,
-        usedMonth: json.usedMonth,
-        monthlyLimit: json.monthlyLimit,
-      });
-    }
+    applyServerUsage(json.usage);
     await loadHistory();
     return {
       url: dataUrlFromBase64(json.imageBase64),
@@ -1250,6 +1294,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
 
   const onGenerate = async () => {
     setBusy(true);
+    setServerProgress(null);
     setError(null);
     setImageUrl(null);
     setPanels(null);
@@ -1283,6 +1328,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      setServerProgress(null);
     }
   };
 
@@ -1519,6 +1565,12 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
             {mode === "server" && serverFeatures[feature] && !authHash.trim() && (
               <p className="text-[11px] text-amber-300">
                 「내 자각 실험 결과 보기」에서 닉네임·비밀번호 조회 후 서버 생성을 사용할 수 있습니다.
+              </p>
+            )}
+            {mode === "server" && serverFeatures[feature] && (
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                서버 생성은 요청을 접수한 뒤 자동으로 진행 상태를 확인합니다(Vercel Hobby 대응). 기본 해상도 512·steps 14입니다.
+                클라우드 GPU에 <code className="text-slate-400">IMAGE_ENGINE_URL</code>이 설정되어 있어야 합니다.
               </p>
             )}
           </div>
@@ -2144,7 +2196,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
               disabled={busy}
               className="px-4 py-2 rounded-lg bg-gradient-resonans text-white text-sm font-medium disabled:opacity-50"
             >
-              {busy ? "생성 중..." : "생성하기"}
+              {busy ? serverProgress ?? "생성 중..." : "생성하기"}
             </button>
             {comfyStatusBadge && (
               <span className={`rounded-full border px-2.5 py-1 text-[11px] ${comfyStatusBadge.className}`}>

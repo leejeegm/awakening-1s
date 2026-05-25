@@ -496,6 +496,56 @@ export interface Database {
         };
         Relationships: [];
       };
+      image_generation_jobs: {
+        Row: {
+          id: string;
+          created_at: string;
+          updated_at: string;
+          nickname: string;
+          feature_key: string;
+          status: "pending" | "running" | "done" | "failed";
+          prompt: string;
+          negative_prompt: string | null;
+          prompt_hash: string;
+          width: number;
+          height: number;
+          steps: number;
+          error_message: string | null;
+          storage_bucket: string | null;
+          storage_path: string | null;
+          result_width: number | null;
+          result_height: number | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+          nickname: string;
+          feature_key: string;
+          status?: "pending" | "running" | "done" | "failed";
+          prompt: string;
+          negative_prompt?: string | null;
+          prompt_hash: string;
+          width: number;
+          height: number;
+          steps: number;
+          error_message?: string | null;
+          storage_bucket?: string | null;
+          storage_path?: string | null;
+          result_width?: number | null;
+          result_height?: number | null;
+        };
+        Update: {
+          status?: "pending" | "running" | "done" | "failed";
+          error_message?: string | null;
+          storage_bucket?: string | null;
+          storage_path?: string | null;
+          result_width?: number | null;
+          result_height?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       image_generation_assets: {
         Row: {
           id: string;
