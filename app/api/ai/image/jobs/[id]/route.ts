@@ -3,6 +3,7 @@ import { normalizeNickname } from "@/lib/entitlements";
 import { verifyParticipantAuthHash } from "@/lib/participantAuth";
 import { getServerImageConfig } from "@/lib/serverImageConfig";
 import { getServerImageJob, processServerImageJob } from "@/lib/serverImageJob";
+import { providerConfigError, resolveImageProvider } from "@/lib/serverImageProvider";
 
 export const maxDuration = 10;
 
@@ -25,23 +26,23 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "인증에 실패했습니다.", requiresAuth: true }, { status: 401 });
   }
 
-  const engineUrl = process.env.IMAGE_ENGINE_URL ?? "";
-  if (!engineUrl) {
-    return NextResponse.json(
-      { error: "서버 이미지 엔진이 설정되지 않았습니다. IMAGE_ENGINE_URL을 확인하세요." },
-      { status: 503 }
-    );
+  const provider = resolveImageProvider();
+  const providerErr = providerConfigError(provider);
+  if (providerErr) {
+    return NextResponse.json({ error: providerErr, provider }, { status: 503 });
   }
+  const engineUrl = (process.env.IMAGE_ENGINE_URL ?? "").trim() || undefined;
 
   const job = await getServerImageJob(jobId, nickname);
   if (!job) return NextResponse.json({ error: "작업을 찾을 수 없습니다." }, { status: 404 });
 
   const cfg = getServerImageConfig();
-  const outcome = await processServerImageJob({ job, engineUrl, nickname });
+  const outcome = await processServerImageJob({ job, provider, engineUrl, nickname });
 
   if (outcome.status === "done") {
     return NextResponse.json({
       jobId,
+      provider,
       status: "done",
       cached: "cached" in outcome ? outcome.cached : false,
       url: outcome.url ?? null,
@@ -57,6 +58,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   if (outcome.status === "failed") {
     return NextResponse.json({
       jobId,
+      provider,
       status: "failed",
       error: outcome.error,
       timedOut: "timedOut" in outcome ? outcome.timedOut : false,
@@ -66,6 +68,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   return NextResponse.json({
     jobId,
+    provider,
     status: "running",
     pollIntervalMs: cfg.pollIntervalMs,
     pollMaxMs: cfg.pollMaxMs,

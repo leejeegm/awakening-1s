@@ -3,7 +3,8 @@ import { recordServerImageUsage, type LimitResult } from "@/lib/imageLimits";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createSignedImageUrl, sha256Hex, uploadPngBase64 } from "@/lib/imageStorage";
 import { buildFinalPrompt, resolveServerDimensions } from "@/lib/serverImageConfig";
-import { callTxt2Img } from "@/lib/serverImageEngine";
+import { callServerImageProvider } from "@/lib/serverImageEngine";
+import type { ImageProvider } from "@/lib/serverImageProvider";
 import type { Database } from "@/types/supabase";
 
 type CachedAssetRow = Pick<
@@ -68,7 +69,8 @@ export async function runServerImageGeneration(opts: {
   featureKey: FeatureKey;
   prompt: string;
   negativePrompt: string;
-  engineUrl: string;
+  provider: ImageProvider;
+  engineUrl?: string;
   width?: number;
   height?: number;
   steps?: number;
@@ -85,13 +87,15 @@ export async function runServerImageGeneration(opts: {
   const finalPrompt = buildFinalPrompt(opts.featureKey, opts.prompt);
   const promptHash = sha256Hex(`${opts.featureKey}::${opts.prompt}::${opts.negativePrompt}`);
 
-  const engine = await callTxt2Img({
+  const engine = await callServerImageProvider({
+    provider: opts.provider,
     engineUrl: opts.engineUrl,
     prompt: finalPrompt,
     negativePrompt: opts.negativePrompt || undefined,
     width: dims.width,
     height: dims.height,
     steps: dims.steps,
+    rateLimitKey: opts.provider === "gemini" ? opts.nickname : undefined,
   });
 
   if (!engine.ok) {
@@ -142,8 +146,12 @@ export async function runServerImageGeneration(opts: {
         steps: dims.steps,
         storage_bucket: up.bucket,
         storage_path: up.path,
-        engine: "sd_webui",
-        engine_meta: { engineUrl: opts.engineUrl.slice(0, 200), cached: false },
+        engine: opts.provider,
+        engine_meta: {
+          provider: opts.provider,
+          engineUrl: opts.engineUrl?.slice(0, 200) ?? null,
+          cached: false,
+        },
       } as never);
       if (ins.error) {
         storageWarning =

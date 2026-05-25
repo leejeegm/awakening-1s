@@ -1203,6 +1203,8 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
     });
     const json = (await res.json().catch(() => ({}))) as {
       mode?: "async" | "sync";
+      provider?: string;
+      providerLabel?: string;
       jobId?: string;
       pollUrl?: string;
       pollIntervalMs?: number;
@@ -1249,7 +1251,11 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
       const maxMs = json.pollMaxMs ?? 120_000;
       const started = Date.now();
       applyServerUsage(json.usage);
-      setServerProgress("서버에서 이미지 생성 중… (Vercel Hobby: 512px·낮은 steps)");
+      setServerProgress(
+        json.providerLabel
+          ? `${json.providerLabel}로 생성 중…`
+          : "서버에서 이미지 생성 중…"
+      );
 
       while (Date.now() - started < maxMs) {
         const pollRes = await fetch(`${pollPath}?${authQuery}`);
@@ -1569,8 +1575,11 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
             )}
             {mode === "server" && serverFeatures[feature] && (
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                서버 생성은 요청을 접수한 뒤 자동으로 진행 상태를 확인합니다(Vercel Hobby 대응). 기본 해상도 512·steps 14입니다.
-                클라우드 GPU에 <code className="text-slate-400">IMAGE_ENGINE_URL</code>이 설정되어 있어야 합니다.
+                서버 생성은 요청 접수 후 자동으로 진행합니다(MVP: 기본{" "}
+                <strong className="text-slate-400">Google Gemini</strong>, 키 없으면 Pollinations·WebUI 순).
+                Vercel에는 <code className="text-slate-400">GEMINI_JAKKAE_API_KEY</code> 또는{" "}
+                <code className="text-slate-400">IMAGE_PROVIDER</code>·<code className="text-slate-400">IMAGE_ENGINE_URL</code>을
+                설정하세요.
               </p>
             )}
           </div>

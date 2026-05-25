@@ -6,6 +6,11 @@ import { verifyParticipantAuthHash } from "@/lib/participantAuth";
 import { findCachedServerImage, runServerImageGeneration } from "@/lib/serverImagePipeline";
 import { getServerImageConfig, resolveServerDimensions } from "@/lib/serverImageConfig";
 import { createServerImageJob } from "@/lib/serverImageJob";
+import {
+  providerConfigError,
+  providerDisplayName,
+  resolveImageProvider,
+} from "@/lib/serverImageProvider";
 
 /** Vercel Hobby 기본 상한(초). Pro에서는 플랫폼이 더 길게 허용할 수 있음 */
 export const maxDuration = 10;
@@ -59,13 +64,12 @@ export async function POST(request: NextRequest) {
   if (!featureKey) return NextResponse.json({ error: "featureKey가 필요합니다." }, { status: 400 });
   if (!prompt) return NextResponse.json({ error: "프롬프트가 필요합니다." }, { status: 400 });
 
-  const engineUrl = process.env.IMAGE_ENGINE_URL ?? "";
-  if (!engineUrl) {
-    return NextResponse.json(
-      { error: "서버 이미지 엔진이 설정되지 않았습니다. IMAGE_ENGINE_URL을 확인하세요." },
-      { status: 503 }
-    );
+  const provider = resolveImageProvider();
+  const providerErr = providerConfigError(provider);
+  if (providerErr) {
+    return NextResponse.json({ error: providerErr, provider }, { status: 503 });
   }
+  const engineUrl = (process.env.IMAGE_ENGINE_URL ?? "").trim() || undefined;
 
   const gate = await isFeatureEnabledForNickname(nickname, featureKey);
   if (!gate.ok) {
@@ -137,13 +141,15 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({
       mode: "async",
+      provider,
+      providerLabel: providerDisplayName(provider),
       jobId: created.job.id,
       status: created.job.status,
       pollUrl: `/api/ai/image/jobs/${created.job.id}`,
       dimensions: { width: dims.width, height: dims.height, steps: dims.steps },
       pollIntervalMs: cfg.pollIntervalMs,
       pollMaxMs: cfg.pollMaxMs,
-      hint: "생성이 끝날 때까지 잠시 기다려 주세요. Vercel Hobby는 해상도·steps가 자동으로 낮게 설정됩니다.",
+      hint: `생성이 끝날 때까지 잠시 기다려 주세요. (${providerDisplayName(provider)}, ${dims.width}×${dims.height})`,
       usage: {
         usedToday: limitRes.usedToday,
         dailyLimit: limitRes.dailyLimit,
@@ -159,6 +165,7 @@ export async function POST(request: NextRequest) {
       featureKey,
       prompt,
       negativePrompt,
+      provider,
       engineUrl,
       width: dims.width,
       height: dims.height,
@@ -180,6 +187,8 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({
       mode: "sync",
+      provider,
+      providerLabel: providerDisplayName(provider),
       imageBase64: gen.result.imageBase64,
       width: gen.result.width,
       height: gen.result.height,

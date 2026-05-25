@@ -1,8 +1,10 @@
+import { callGeminiImage } from "@/lib/geminiImage";
+import { callPollinationsImage } from "@/lib/pollinationsImage";
 import { getServerImageConfig } from "@/lib/serverImageConfig";
+import type { ImageProvider } from "@/lib/serverImageProvider";
+import type { ServerImageGenerateResult } from "@/lib/serverImageTypes";
 
-export type Txt2ImgResult =
-  | { ok: true; imageBase64: string }
-  | { ok: false; error: string; timedOut?: boolean; engineStatus?: number; engineError?: unknown };
+export type Txt2ImgResult = ServerImageGenerateResult;
 
 export async function callTxt2Img(opts: {
   engineUrl: string;
@@ -57,4 +59,40 @@ export async function callTxt2Img(opts: {
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function callServerImageProvider(opts: {
+  provider: ImageProvider;
+  engineUrl?: string;
+  prompt: string;
+  negativePrompt?: string;
+  width: number;
+  height: number;
+  steps: number;
+  rateLimitKey?: string;
+  timeoutMs?: number;
+}): Promise<Txt2ImgResult> {
+  const common = {
+    prompt: opts.prompt,
+    negativePrompt: opts.negativePrompt,
+    width: opts.width,
+    height: opts.height,
+    timeoutMs: opts.timeoutMs,
+  };
+
+  if (opts.provider === "gemini") {
+    return callGeminiImage({ ...common, rateLimitKey: opts.rateLimitKey });
+  }
+  if (opts.provider === "pollinations") {
+    return callPollinationsImage(common);
+  }
+  const engineUrl = (opts.engineUrl ?? "").trim();
+  if (!engineUrl) {
+    return { ok: false, error: "IMAGE_ENGINE_URL이 설정되지 않았습니다." };
+  }
+  return callTxt2Img({
+    engineUrl,
+    ...common,
+    steps: opts.steps,
+  });
 }

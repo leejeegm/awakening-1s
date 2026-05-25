@@ -1,4 +1,5 @@
 import type { FeatureKey } from "@/lib/entitlements";
+import type { ImageProvider } from "@/lib/serverImageProvider";
 import { getServerImageConfig } from "@/lib/serverImageConfig";
 import { findCachedServerImage, runServerImageGeneration } from "@/lib/serverImagePipeline";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -80,11 +81,12 @@ async function markJob(
 
 export async function processServerImageJob(opts: {
   job: JobRow;
-  engineUrl: string;
+  provider: ImageProvider;
+  engineUrl?: string;
   nickname: string;
 }) {
   const cfg = getServerImageConfig();
-  const { job, engineUrl, nickname } = opts;
+  const { job, provider, engineUrl, nickname } = opts;
 
   if (job.status === "done") {
     if (job.storage_bucket && job.storage_path) {
@@ -166,6 +168,7 @@ export async function processServerImageJob(opts: {
     featureKey: job.feature_key as FeatureKey,
     prompt: job.prompt,
     negativePrompt: job.negative_prompt ?? "",
+    provider,
     engineUrl,
     width: job.width,
     height: job.height,
