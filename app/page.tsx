@@ -86,6 +86,7 @@ export default function Home() {
   const [recordModalOpen, setRecordModalOpen] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [recordSuccessHint, setRecordSuccessHint] = useState<string | null>(null);
   const [lastRecordNickname, setLastRecordNickname] = useState(() =>
     typeof window !== "undefined" ? (localStorage.getItem(NICKNAME_KEY) ?? "").trim() : ""
   );
@@ -257,6 +258,7 @@ export default function Home() {
     const t = note.trim();
     if (!n || !t) return;
     setSubmitError(null);
+    setRecordSuccessHint(null);
     const client = supabase;
     const fetchCount = (nick: string, since: string) =>
       client
@@ -298,7 +300,12 @@ export default function Home() {
           isPublic: !!opts?.isPublic,
         }),
       });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; notice?: string };
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        notice?: string;
+        resonanceKindAiLabel?: string | null;
+      };
       if (!res.ok || !json.ok) {
         setSubmitError(json.error ?? "저장에 실패했습니다. 다시 시도해 주세요.");
         setSubmitStatus("error");
@@ -306,6 +313,11 @@ export default function Home() {
       }
       if (json.notice) {
         setSubmitError(json.notice);
+      }
+      if (json.resonanceKindAiLabel) {
+        setRecordSuccessHint(
+          `미선택으로 저장했습니다. AI 추천 감응: ${json.resonanceKindAiLabel} (분석·통계에 반영)`
+        );
       }
     } catch {
       setSubmitError("저장에 실패했습니다. 다시 시도해 주세요.");
@@ -432,6 +444,9 @@ export default function Home() {
             }}
           />
         </div>
+        {recordSuccessHint && (
+          <p className="mt-3 text-xs text-electric-blue/90 leading-relaxed">{recordSuccessHint}</p>
+        )}
       </section>
 
       {/* 감응 닉네임 (공동): 친구·연인과 공유해 같은 닉네임으로 실험 */}

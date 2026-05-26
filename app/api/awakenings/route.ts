@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { moderateForPublicShare } from "@/lib/moderation";
 import { getClientIp } from "@/lib/requestIp";
-import { resolveResonanceKindForDb } from "@/lib/resonanceEssence";
+import { inferResonanceKindFromNote } from "@/lib/inferResonanceKind";
+import {
+  isResonanceKindId,
+  RESONANCE_KIND_NONE,
+  resonanceKindShortLabel,
+  resolveResonanceKindForDb,
+} from "@/lib/resonanceEssence";
 
 type Body = {
   nickname?: string;
@@ -26,9 +32,10 @@ type AwakeningInsertRow = {
   deleted_by: string | null;
 };
 
-function isMissingResonanceKindColumn(message: string, code?: string): boolean {
+function isMissingColumn(message: string, column: string, code?: string): boolean {
   const m = message.toLowerCase();
-  if (m.includes("resonance_kind")) return true;
+  const col = column.toLowerCase();
+  if (m.includes(col)) return true;
   if (code === "PGRST204" && m.includes("resonance")) return true;
   return (
     (m.includes("column") && m.includes("does not exist")) ||
@@ -42,17 +49,36 @@ async function insertAwakeningRow(
   admin: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   row: AwakeningInsertRow
 ) {
-  const first = await admin.from("awakenings").insert(row as never);
-  if (!first.error) return { ok: true as const };
-
-  if ("resonance_kind" in row && isMissingResonanceKindColumn(first.error.message, first.error.code)) {
-    const { resonance_kind: _omit, ...withoutKind } = row;
-    const retry = await admin.from("awakenings").insert(withoutKind as never);
-    if (!retry.error) return { ok: true as const, resonanceKindSkipped: true as const };
-    return { ok: false as const, error: retry.error };
+  const first = await admin.from("awakenings").insert(row as never).select("id").single();
+  if (!first.error && first.data?.id) {
+    return { ok: true as const, id: first.data.id as string };
   }
 
-  return { ok: false as const, error: first.error };
+  if ("resonance_kind" in row && isMissingColumn(first.error?.message ?? "", "resonance_kind", first.error?.code)) {
+    const { resonance_kind: _omit, ...withoutKind } = row;
+    const retry = await admin.from("awakenings").insert(withoutKind as never).select("id").single();
+    if (!retry.error && retry.data?.id) {
+      return { ok: true as const, id: retry.data.id as string, resonanceKindSkipped: true as const };
+    }
+    return { ok: false as const, error: retry.error! };
+  }
+
+  return { ok: false as const, error: first.error! };
+}
+
+async function attachAiResonanceKind(
+  admin: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  awakeningId: string,
+  aiKind: string
+) {
+  const upd = await admin
+    .from("awakenings")
+    .update({ resonance_kind_ai: aiKind } as never)
+    .eq("id", awakeningId);
+  if (!upd.error) return true;
+  if (isMissingColumn(upd.error.message, "resonance_kind_ai", upd.error.code)) return false;
+  console.warn("[awakenings/ai-kind]", upd.error.message);
+  return false;
 }
 
 export async function POST(request: NextRequest) {
@@ -101,7 +127,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const resonance_kind = resolveResonanceKindForDb(body.resonanceKind);
+  const rawKind = (body.resonanceKind ?? "").trim();
+  const userPickedKind = rawKind && isResonanceKindId(rawKind);
+  const resonance_kind = userPickedKind ? rawKind : resolveResonanceKindForDb(body.resonanceKind);
 
   const insertPayload: AwakeningInsertRow = {
     nickname,
@@ -116,6 +144,24 @@ export async function POST(request: NextRequest) {
   };
 
   const inserted = await insertAwakeningRow(admin, insertPayload);
+  let resonanceKindAi: string | null = null;
+
+  if (
+    inserted.ok &&
+    inserted.id &&
+    !userPickedKind &&
+    resonance_kind === RESONANCE_KIND_NONE &&
+    !inserted.resonanceKindSkipped
+  ) {
+    const inferred = await inferResonanceKindFromNote(noteSliced, durationType, {
+      rateLimitKey: nickname,
+    });
+    if (inferred) {
+      const attached = await attachAiResonanceKind(admin, inserted.id, inferred);
+      if (attached) resonanceKindAi = inferred;
+    }
+  }
+
   if (!inserted.ok) {
     console.error("[awakenings/insert]", inserted.error.message, inserted.error.code);
     return NextResponse.json(
@@ -157,6 +203,11 @@ export async function POST(request: NextRequest) {
     isPublicSaved: isPublic,
     moderationState: moderation_state,
     notice,
+    resonanceKindAi,
+    resonanceKindAiLabel:
+      resonanceKindAi && isResonanceKindId(resonanceKindAi)
+        ? resonanceKindShortLabel(resonanceKindAi)
+        : null,
   });
 }
 

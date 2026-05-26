@@ -213,6 +213,9 @@ export default function RecordModal({
             </div>
             <div>
               <span className="block text-xs text-slate-500 mb-1.5">감응 유형 (선택·미선택도 기록 의미)</span>
+              <p className="text-[10px] text-slate-600 mb-1.5 leading-relaxed">
+                「미선택」으로 저장하면 기록 키워드·맥락을 바탕으로 AI가 감응 유형을 추천해 함께 남깁니다.
+              </p>
               <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"

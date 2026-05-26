@@ -23,6 +23,7 @@ export interface Database {
           deleted_by: string | null;
           purge_hold: boolean;
           resonance_kind: string | null;
+          resonance_kind_ai: string | null;
         };
         Insert: {
           id?: string;
@@ -31,6 +32,7 @@ export interface Database {
           note: string;
           duration_type?: string;
           resonance_kind?: string | null;
+          resonance_kind_ai?: string | null;
           is_public?: boolean;
           moderation_state?: "ok" | "deleted";
           moderation_reason?: string | null;
@@ -45,6 +47,7 @@ export interface Database {
           note?: string;
           duration_type?: string;
           resonance_kind?: string | null;
+          resonance_kind_ai?: string | null;
           is_public?: boolean;
           moderation_state?: "ok" | "deleted";
           moderation_reason?: string | null;
