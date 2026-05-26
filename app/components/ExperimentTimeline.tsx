@@ -5,9 +5,12 @@ import { supabase } from "@/lib/supabase";
 import { withTimeout } from "@/lib/requestTimeout";
 import type { Database } from "@/types/supabase";
 import { Sparkles } from "lucide-react";
+import ResonanceKindBadge from "./ResonanceKindBadge";
 
 type Row = Omit<Database["public"]["Tables"]["awakenings"]["Row"], "nickname"> & {
   nickname: string | null;
+  resonance_kind?: string | null;
+  resonance_kind_ai?: string | null;
 };
 type ReactionRow = Database["public"]["Tables"]["reactions"]["Row"];
 
@@ -15,7 +18,15 @@ type Props = { lastRecordNickname?: string };
 
 type ReactionCounts = Record<string, { gam: number; eung: number }>;
 
-type TopReactionRow = { id: string; note: string; created_at: string; gam: number; eung: number };
+type TopReactionRow = {
+  id: string;
+  note: string;
+  created_at: string;
+  gam: number;
+  eung: number;
+  resonance_kind?: string | null;
+  resonance_kind_ai?: string | null;
+};
 
 /** 자동 전환: 내 자각 ↔ 탑20 (닉네임 있음) 또는 전체 ↔ 탑20 (없음). 감·응 차트는 별도 섹션 */
 type TimelineViewMode = "my" | "top20" | "list";
@@ -93,14 +104,39 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     let data: unknown = null;
     try {
       const res = await withTimeout(
-        Promise.resolve(client.from("awakenings").select("id, note, created_at").in("id", sorted))
-      ) as { data: { id: string; note: string; created_at: string }[] | null };
+        Promise.resolve(
+          client
+            .from("awakenings")
+            .select("id, note, created_at, resonance_kind, resonance_kind_ai")
+            .in("id", sorted)
+        )
+      ) as {
+        data:
+          | {
+              id: string;
+              note: string;
+              created_at: string;
+              resonance_kind?: string | null;
+              resonance_kind_ai?: string | null;
+            }[]
+          | null;
+      };
       data = res.data;
     } catch {
       setTop20([]);
       return;
     }
-    const byId = Object.fromEntries(((data ?? []) as { id: string; note: string; created_at: string }[]).map((r) => [r.id, r]));
+    const byId = Object.fromEntries(
+      (
+        (data ?? []) as {
+          id: string;
+          note: string;
+          created_at: string;
+          resonance_kind?: string | null;
+          resonance_kind_ai?: string | null;
+        }[]
+      ).map((r) => [r.id, r])
+    );
     const withCounts = sorted
       .map((id) => {
         const row = byId[id];
@@ -155,6 +191,8 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
           nickname: null,
             note: raw.note,
             duration_type: raw.duration_type ?? "1s",
+            resonance_kind: (raw.resonance_kind as string | null) ?? null,
+            resonance_kind_ai: (raw.resonance_kind_ai as string | null) ?? null,
           } as Row;
           setList((prev) => [item, ...prev].slice(0, 60));
         }
@@ -244,6 +282,8 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
             nickname: raw.nickname,
             note: raw.note,
             duration_type: raw.duration_type ?? "1s",
+            resonance_kind: (raw.resonance_kind as string | null) ?? null,
+            resonance_kind_ai: (raw.resonance_kind_ai as string | null) ?? null,
           } as Row;
           setMyList((prev) => [item, ...prev].slice(0, 100));
         }
@@ -381,6 +421,11 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
                   </time>
                 </div>
                 <p className="mt-1 text-sm text-slate-300 break-words">{item.note}</p>
+                <ResonanceKindBadge
+                  resonanceKind={item.resonance_kind}
+                  resonanceKindAi={item.resonance_kind_ai}
+                  className="mt-1.5"
+                />
                 {!hideReactions(item) && (
                   <div className="mt-2 flex gap-2 items-center relative">
                     <button
@@ -429,6 +474,11 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
               onPointerDown={pauseRotate}
             >
               <p className="text-sm text-slate-300 break-words">{item.note}</p>
+              <ResonanceKindBadge
+                resonanceKind={item.resonance_kind}
+                resonanceKindAi={item.resonance_kind_ai}
+                className="mt-1.5"
+              />
               <div className="mt-2 flex gap-2 items-center relative">
                 <button
                   type="button"

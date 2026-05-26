@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Database } from "@/types/supabase";
 import { Lock, X } from "lucide-react";
+import ResonanceKindBadge from "./ResonanceKindBadge";
 
 type AwakeningRow = Database["public"]["Tables"]["awakenings"]["Row"];
 
@@ -213,6 +214,11 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
                           {new Date(item.created_at).toLocaleString("ko-KR")}
                         </time>
                         <p className="mt-1 text-slate-300 break-words">{item.note}</p>
+                        <ResonanceKindBadge
+                          resonanceKind={item.resonance_kind}
+                          resonanceKindAi={item.resonance_kind_ai}
+                          className="mt-1.5"
+                        />
                       </li>
                     ))}
                   </ul>

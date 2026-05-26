@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import {
   RESONANCE_ESSENCES,
@@ -87,6 +87,9 @@ export default function RecordModal({
   const [gender, setGender] = useState<GenderType | "">("defer");
   const [ageGroup, setAgeGroup] = useState<AgeGroupType | "">("defer");
   const [resonanceKind, setResonanceKind] = useState<ResonanceKindStored>(RESONANCE_KIND_NONE);
+  const [aiPreview, setAiPreview] = useState<{ id: ResonanceKindId; label: string } | null>(null);
+  const [aiPreviewLoading, setAiPreviewLoading] = useState(false);
+  const suggestSeq = useRef(0);
 
   const effectiveNickname = sharedNickname && recordAs === "shared" ? sharedNickname : nickname.trim();
   const showNicknameChoice = !!sharedNickname?.trim();
@@ -97,6 +100,46 @@ export default function RecordModal({
       setRecordAs(sharedNickname?.trim() ? "shared" : "personal");
     }
   }, [open, defaultPersonalNickname, sharedNickname]);
+
+  useEffect(() => {
+    if (!open || resonanceKind !== RESONANCE_KIND_NONE) {
+      setAiPreview(null);
+      setAiPreviewLoading(false);
+      return;
+    }
+    const text = note.trim();
+    if (text.length < 4) {
+      setAiPreview(null);
+      setAiPreviewLoading(false);
+      return;
+    }
+    const seq = ++suggestSeq.current;
+    const timer = setTimeout(async () => {
+      setAiPreviewLoading(true);
+      try {
+        const res = await fetch("/api/awakenings/suggest-resonance-kind", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ note: text, durationType: duration }),
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          suggested?: ResonanceKindId | null;
+          label?: string | null;
+        };
+        if (seq !== suggestSeq.current) return;
+        if (json.suggested && json.label) {
+          setAiPreview({ id: json.suggested, label: json.label });
+        } else {
+          setAiPreview(null);
+        }
+      } catch {
+        if (seq === suggestSeq.current) setAiPreview(null);
+      } finally {
+        if (seq === suggestSeq.current) setAiPreviewLoading(false);
+      }
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [open, note, duration, resonanceKind]);
 
   const limit = LIMITS[duration];
 
@@ -266,6 +309,29 @@ export default function RecordModal({
               className="w-full px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 placeholder-slate-500 focus:border-electric-blue outline-none resize-none text-base touch-manipulation"
             />
             <p className="text-xs text-slate-500">{note.length} / {limit.maxLength}</p>
+            {resonanceKind === RESONANCE_KIND_NONE && (
+              <div className="rounded-lg border border-deep-violet/30 bg-deep-violet/10 px-3 py-2 min-h-[2.25rem] flex flex-wrap items-center gap-2">
+                {aiPreviewLoading ? (
+                  <span className="text-[11px] text-slate-500">AI 감응 유형 분석 중…</span>
+                ) : aiPreview ? (
+                  <>
+                    <span className="text-[11px] text-deep-violet/90">저장 시 AI 추천 예상</span>
+                    <button
+                      type="button"
+                      onClick={() => setResonanceKind(aiPreview.id)}
+                      className="text-[11px] px-2 py-0.5 rounded-full bg-deep-violet/25 text-deep-violet border border-deep-violet/40 hover:bg-deep-violet/35"
+                      title="이 유형으로 직접 선택"
+                    >
+                      {aiPreview.label} (탭하여 선택)
+                    </button>
+                  </>
+                ) : note.trim().length >= 4 ? (
+                  <span className="text-[11px] text-slate-600">맥락이 짧거나 분류가 어렵습니다. 미선택으로도 저장됩니다.</span>
+                ) : (
+                  <span className="text-[11px] text-slate-600">내용을 입력하면 AI 추천 유형이 표시됩니다.</span>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
