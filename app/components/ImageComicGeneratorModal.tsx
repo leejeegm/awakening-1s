@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { withTimeout } from "@/lib/requestTimeout";
+import {
+  buildStyledImagePrompt,
+  DEFAULT_IMAGE_NEGATIVE_PROMPT,
+  defaultImageUserPromptPrefix,
+  mergeImageNegativePrompt,
+} from "@/lib/imageStyleGuidance";
 
 type Mode = "local" | "server";
 type Feature = "image_cut" | "comic_4panel";
@@ -327,13 +333,10 @@ function normalizeRecentLocalEngineEntries(items: unknown): LocalEngineSavedEntr
 }
 
 function buildPromptTexts(feature: Feature, prompt: string, negativePrompt: string) {
-  const positiveText =
-    feature === "comic_4panel"
-      ? `${prompt}\n\n4 panel comic, 2x2 grid layout, korean webtoon style`
-      : prompt;
+  const featureKey = feature === "comic_4panel" ? "comic_4panel" : "image_cut";
   return {
-    positiveText,
-    negativeText: negativePrompt,
+    positiveText: buildStyledImagePrompt(featureKey, prompt),
+    negativeText: mergeImageNegativePrompt(negativePrompt),
   };
 }
 
@@ -903,12 +906,8 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
 
   useEffect(() => {
     if (!open) return;
-    setPrompt(
-      `다음 글을 바탕으로 이미지로 표현해줘. 개인 식별 정보는 넣지 말아줘.\n\n기본 스타일(중요):\n- 인물(사람/얼굴/신체/손) **완전 금지**. 실루엣도 금지.\n- 자연/풍경/일상 장면 위주: 숲/바다/카페/하늘/산책길 중 하나를 선택(또는 어울리는 배경을 창의적으로 선택).\n- 사용자 글의 핵심을 ‘관찰·통찰·성찰·통섭’을 자각하게 만드는 긍정 동기부여 관점의 은유적 장면으로 구성.\n- 연필(흑연) 스케치, 종이 질감, 미니멀 라인, 은은한 음영, 무채색.\n- 텍스트/로고/워터마크 금지.\n\n${(baseText ?? "").trim()}`
-    );
-    setNegativePrompt(
-      "human, people, person, man, woman, child, face, portrait, body, hands, silhouette, character, text, watermark, logo, signature, phone number, email"
-    );
+    setPrompt(`${defaultImageUserPromptPrefix()}${(baseText ?? "").trim()}`);
+    setNegativePrompt(DEFAULT_IMAGE_NEGATIVE_PROMPT);
     setError(null);
     setImageUrl(null);
     setPanels(null);

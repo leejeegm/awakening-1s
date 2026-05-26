@@ -1,3 +1,7 @@
+import {
+  appendGeminiAvoidBlock,
+  GEMINI_IMAGE_SYSTEM_INSTRUCTION,
+} from "@/lib/imageStyleGuidance";
 import { tryConsumeGeminiRateDb } from "@/lib/geminiRateLimitDb";
 import { takeGeminiRateSlot } from "@/lib/geminiRateLimit";
 import { getServerImageConfig } from "@/lib/serverImageConfig";
@@ -55,13 +59,7 @@ export async function callGeminiImage(opts: {
     "gemini-2.5-flash-image";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const textPrompt = [
-    opts.prompt,
-    opts.negativePrompt?.trim()
-      ? `\n\nAvoid in the image: ${opts.negativePrompt.trim()}`
-      : "",
-    "\n\nNo text watermarks, logos, or personal identifying information in the image.",
-  ].join("");
+  const textPrompt = appendGeminiAvoidBlock(opts.prompt, opts.negativePrompt);
 
   const timeoutMs = opts.timeoutMs ?? getServerImageConfig().engineTimeoutMs;
   const controller = new AbortController();
@@ -73,6 +71,9 @@ export async function callGeminiImage(opts: {
       headers: { "Content-Type": "application/json" },
       signal: controller.signal,
       body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: GEMINI_IMAGE_SYSTEM_INSTRUCTION }],
+        },
         contents: [{ role: "user", parts: [{ text: textPrompt }] }],
         generationConfig: {
           responseModalities: ["IMAGE"],

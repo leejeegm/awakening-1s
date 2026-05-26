@@ -1,4 +1,5 @@
 import type { FeatureKey } from "@/lib/entitlements";
+import { buildStyledImagePrompt, mergeImageNegativePrompt } from "@/lib/imageStyleGuidance";
 
 function clampIntEnv(name: string, fallback: number, min: number, max: number) {
   const n = Number(process.env[name] ?? String(fallback));
@@ -59,18 +60,9 @@ export function resolveServerDimensions(
 }
 
 export function buildFinalPrompt(featureKey: FeatureKey, prompt: string) {
-  const base = (prompt ?? "").trim();
-  const globalStyle = [
-    "Style: positive, calming, creative inspiration.",
-    "Medium: graphite pencil sketch on paper, subtle shading, minimal lines, no color.",
-    "Subject: nature, landscape, everyday scenes (forest, sea, cafe interior, sky, walking path), sunlight, plants, small details.",
-    "Intent: express the user's key message as a gentle metaphor that encourages awareness through observation, insight, reflection, and integration (positive motivation).",
-    "Hard rule: do NOT include any humans/people/portraits/faces/bodies/hands at all.",
-    "Avoid: any person/human figure, portrait, close-up face, text, watermark, logo, signature.",
-  ].join(" ");
+  return buildStyledImagePrompt(featureKey, prompt);
+}
 
-  if (featureKey === "comic_4panel") {
-    return `${base}\n\n${globalStyle}\n\n4 panel comic, 2x2 grid layout, consistent mood, clean pencil line art, korean webtoon paneling (but still pencil sketch). No humans in any panel.`;
-  }
-  return `${base}\n\n${globalStyle}`;
+export function buildFinalNegativePrompt(negativePrompt?: string) {
+  return mergeImageNegativePrompt(negativePrompt);
 }

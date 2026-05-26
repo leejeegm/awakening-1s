@@ -2,7 +2,8 @@ import type { FeatureKey } from "@/lib/entitlements";
 import { recordServerImageUsage, type LimitResult } from "@/lib/imageLimits";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createSignedImageUrl, sha256Hex, uploadPngBase64 } from "@/lib/imageStorage";
-import { buildFinalPrompt, resolveServerDimensions } from "@/lib/serverImageConfig";
+import { IMAGE_STYLE_CACHE_VERSION } from "@/lib/imageStyleGuidance";
+import { buildFinalNegativePrompt, buildFinalPrompt, resolveServerDimensions } from "@/lib/serverImageConfig";
 import { callServerImageProvider } from "@/lib/serverImageEngine";
 import type { ImageProvider } from "@/lib/serverImageProvider";
 import type { Database } from "@/types/supabase";
@@ -34,7 +35,9 @@ export async function findCachedServerImage(opts: {
 }) {
   const admin = getSupabaseAdmin();
   if (!admin) return null;
-  const promptHash = sha256Hex(`${opts.featureKey}::${opts.prompt}::${opts.negativePrompt}`);
+  const promptHash = sha256Hex(
+    `${IMAGE_STYLE_CACHE_VERSION}::${opts.featureKey}::${opts.prompt}::${opts.negativePrompt}`
+  );
   try {
     const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: cached } = await admin
@@ -85,13 +88,16 @@ export async function runServerImageGeneration(opts: {
     steps: opts.steps,
   });
   const finalPrompt = buildFinalPrompt(opts.featureKey, opts.prompt);
-  const promptHash = sha256Hex(`${opts.featureKey}::${opts.prompt}::${opts.negativePrompt}`);
+  const finalNegative = buildFinalNegativePrompt(opts.negativePrompt);
+  const promptHash = sha256Hex(
+    `${IMAGE_STYLE_CACHE_VERSION}::${opts.featureKey}::${opts.prompt}::${opts.negativePrompt}`
+  );
 
   const engine = await callServerImageProvider({
     provider: opts.provider,
     engineUrl: opts.engineUrl,
     prompt: finalPrompt,
-    negativePrompt: opts.negativePrompt || undefined,
+    negativePrompt: finalNegative,
     width: dims.width,
     height: dims.height,
     steps: dims.steps,

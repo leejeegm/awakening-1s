@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { withTimeout } from "@/lib/requestTimeout";
 import { X } from "lucide-react";
-import ImageComicGeneratorModal from "@/app/components/ImageComicGeneratorModal";
 
 const NICKNAME_STORAGE_KEY = "lastRecordNickname";
 
@@ -137,10 +136,9 @@ function WordCloudPanel({
 
 type Props = {
   lastRecordNickname?: string;
-  participantAuthHash?: string;
 };
 
-export default function WordCloudViz({ lastRecordNickname = "", participantAuthHash = "" }: Props) {
+export default function WordCloudViz({ lastRecordNickname = "" }: Props) {
   const [allNotes, setAllNotes] = useState<string[]>([]);
   const [myNotes, setMyNotes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,8 +148,6 @@ export default function WordCloudViz({ lastRecordNickname = "", participantAuthH
     records: RecordRow[];
     loading: boolean;
   } | null>(null);
-  const [genOpen, setGenOpen] = useState(false);
-  const [genBaseText, setGenBaseText] = useState("");
 
   useEffect(() => {
     const nick = (lastRecordNickname || "").trim();
@@ -324,37 +320,9 @@ export default function WordCloudViz({ lastRecordNickname = "", participantAuthH
                 </ul>
               )}
             </div>
-            <div className="p-3 border-t border-slate-700 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const notes = keywordModal.records.map((r) => r.note).join("\n");
-                  setGenBaseText(
-                    `키워드: ${keywordModal.keyword}\n\n${notes || "관련 기록을 바탕으로 한 장 컷 또는 4면 웹툰으로 표현해 주세요."}`
-                  );
-                  setGenOpen(true);
-                }}
-                disabled={!effectiveNickname.trim()}
-                className="text-[12px] px-3 py-1.5 rounded-lg bg-deep-violet/60 text-slate-100 hover:bg-deep-violet/80 disabled:opacity-50"
-                title="유료: 내 기록·키워드 기반 이미지·4면 웹툰"
-              >
-                유료 이미지/웹툰 그리기
-              </button>
-              {!effectiveNickname.trim() && (
-                <span className="text-[12px] text-slate-500 self-center">닉네임으로 기록 후 이용 가능</span>
-              )}
-            </div>
           </div>
         </div>
       )}
-
-      <ImageComicGeneratorModal
-        open={genOpen}
-        onClose={() => setGenOpen(false)}
-        nickname={effectiveNickname}
-        authHash={participantAuthHash}
-        baseText={genBaseText}
-      />
     </>
   );
 }

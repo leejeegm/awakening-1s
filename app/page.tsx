@@ -503,10 +503,7 @@ export default function Home() {
         <p className="text-xs text-slate-500 mb-2">전체 리스트 ↔ 상위 반응 탑20이 30초마다 바뀝니다. 기록을 누르면 자동 전환이 잠시 멈춥니다. 타인 기록에 감·응을 눌러 보세요.</p>
         <SectionErrorBoundary fallbackTitle="워드클라우드를 불러오는 중 문제가 생겼습니다." onRetry={() => setSectionKeys((prev) => ({ ...prev, wordcloud: prev.wordcloud + 1 }))}>
           <div key={sectionKeys.wordcloud}>
-            <WordCloudViz
-              lastRecordNickname={lastRecordNickname}
-              participantAuthHash={participantAuthHash}
-            />
+            <WordCloudViz lastRecordNickname={lastRecordNickname} />
           </div>
         </SectionErrorBoundary>
         <SectionErrorBoundary fallbackTitle="타임라인을 불러오는 중 문제가 생겼습니다." onRetry={() => setSectionKeys((prev) => ({ ...prev, timeline: prev.timeline + 1 }))}>
