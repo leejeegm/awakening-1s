@@ -13,6 +13,12 @@ export function formatAiContentAdminLines(meta: unknown): string[] {
   if (typeof m.geminiFailureKind === "string") {
     lines.push(`Gemini 실패 유형: ${m.geminiFailureKind}`);
     if (m.geminiFailureKind === "local_rate_limit") lines.push(`(서버 측 호출 상한 — GEMINI_RATE_LIMIT_* 환경 변수)`);
+    if (m.geminiFailureKind === "http_error" && m.geminiStatus === 404) {
+      lines.push(`(404: 모델 ID 오류·종료 — Vercel에 GEMINI_MODEL=gemini-2.5-flash 설정 후 재배포)`);
+    }
+    if (m.geminiFailureKind === "http_error" && (m.geminiStatus === 400 || m.geminiStatus === 403)) {
+      lines.push(`(${m.geminiStatus}: API 키·Generative Language API 활성화·결제 설정 확인)`);
+    }
   }
   if (m.geminiAwkwardOutput === true) lines.push(`Gemini 출력이 사용자용 톤 기준에 맞지 않아 대체`);
   if (m.geminiStatus != null) lines.push(`Gemini HTTP: ${String(m.geminiStatus)}`);

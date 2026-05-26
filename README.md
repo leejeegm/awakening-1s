@@ -210,7 +210,7 @@ git push -u origin main
 | Name | Value |
 |------|--------|
 | `GEMINI_API_KEY` 또는 `GEMINI_JAKKAE_API_KEY` | Google Gemini 키 (**1차 필터·요약**). 없으면 해당 구간은 룰베이스로 대체합니다. |
-| `GEMINI_MODEL` | (선택) 예: `gemini-1.5-flash`. 미설정 시 기본 플래시 모델을 사용합니다. |
+| `GEMINI_MODEL` | (선택) 예: `gemini-2.5-flash`. 미설정 시 `gemini-2.5-flash` (1.5-flash는 API 종료됨). |
 | `OPENAI_API_KEY` | OpenAI 키 (**정밀 진단**용). `1.00초(1s)` 컨텍스트가 있을 때만 GPT-4o를 추가 호출합니다. |
 
 ---
