@@ -3,6 +3,7 @@ import { verifyAdminCookie } from "@/lib/adminAuth";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildPremiumReportPdfBuffer } from "@/lib/premiumReportPdf";
 import { mergePdfBuffers } from "@/lib/premiumReportPdfMerge";
+import { importGeneratedImagesAsPremiumAssets } from "@/lib/premiumReportImageImport";
 import { createSignedPremiumReportUrl, loadPremiumReportPdfAssets, uploadPremiumReportPdf } from "@/lib/premiumReportStorage";
 
 export async function POST(
@@ -53,6 +54,10 @@ export async function POST(
     .eq("id", doc.id);
 
   try {
+    await importGeneratedImagesAsPremiumAssets({
+      requestId: params.id,
+      nickname: (requestRow as { nickname: string }).nickname,
+    });
     const { imageAssets, attachmentPdfs } = await loadPremiumReportPdfAssets(params.id);
     const pdf = await buildPremiumReportPdfBuffer({
       title: doc.title,
