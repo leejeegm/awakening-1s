@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getRecentSundayKeysKST } from "@/lib/premiumReport";
 import { createSignedPremiumReportUrl, sortPremiumReportAssets } from "@/lib/premiumReportStorage";
 import { getWeekRangeKST } from "@/lib/weekRange";
+import { uploadPremiumReportBinary } from "@/lib/premiumReportStorage";
 
 type PremiumSection = {
   key: string;
@@ -118,6 +119,7 @@ function buildDefaultSections(args: {
   aiHistory: AiHistoryRow[];
   weeklyStats: ReturnType<typeof buildWeeklyStats>;
   keywords: string[];
+  imageContext?: string | null;
 }) {
   const latestNotes = args.notes.slice(0, 6).map((note, i) => `${i + 1}. ${note}`).join("\n");
   const aiHistoryText = args.aiHistory
@@ -130,12 +132,21 @@ function buildDefaultSections(args: {
   const durationText = buildDurationSummary(args.records) || "기록 길이 데이터가 아직 충분하지 않습니다.";
   const keywordText = args.keywords.length > 0 ? args.keywords.map((word, i) => `${i + 1}. ${word}`).join("\n") : "핵심 단어를 아직 추출하지 못했습니다.";
 
-  return [
+  const baseSections: PremiumSection[] = [
     {
       key: "overview",
       title: "기록 개요",
       body: `${args.nickname} 님의 최근 분석 구간 기록은 총 ${args.records.length}건입니다.`,
     },
+    ...(args.imageContext
+      ? [
+          {
+            key: "visual-metaphor",
+            title: "시각 은유(스케치) — 관찰·통찰·성찰·통섭",
+            body: args.imageContext,
+          },
+        ]
+      : []),
     {
       key: "weekly-rhythm",
       title: "4주 기록 리듬",
@@ -161,7 +172,8 @@ function buildDefaultSections(args: {
       title: "기존 맞춤 메시지 흐름",
       body: aiHistoryText || "저장된 맞춤 메시지 이력이 아직 없습니다.",
     },
-  ] satisfies PremiumSection[];
+  ];
+  return baseSections satisfies PremiumSection[];
 }
 
 async function ensureSnapshot(requestId: string, nickname: string) {
@@ -235,6 +247,114 @@ async function ensureSnapshot(requestId: string, nickname: string) {
   return inserted ?? snapshotPayload;
 }
 
+async function importLatestGeneratedImageAsPremiumAsset(args: { requestId: string; nickname: string }) {
+  const admin = getSupabaseAdmin();
+  if (!admin) return { ok: false as const, reason: "no_admin" as const };
+
+  // 이미 커버/첨부 이미지가 있으면 자동 첨부는 하지 않음 (운영 안전)
+  const { data: existing } = await admin
+    .from("premium_report_assets")
+    .select("id, asset_type, meta_json, created_at")
+    .eq("request_id", args.requestId)
+    .order("created_at", { ascending: false });
+
+  const existingRows = (existing ?? []) as { asset_type: string; meta_json: unknown }[];
+  const hasAnyImage = existingRows.some((r) => r.asset_type === "chart_image" || r.asset_type === "attachment_image");
+  if (hasAnyImage) return { ok: true as const, imported: false as const };
+
+  const { data: gen } = await admin
+    .from("image_generation_assets")
+    .select("id, created_at, feature_key, prompt, storage_bucket, storage_path, engine")
+    .eq("nickname", args.nickname)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const row = (gen ?? null) as
+    | {
+        id: string;
+        created_at: string;
+        feature_key: string;
+        prompt: string;
+        storage_bucket: string;
+        storage_path: string;
+        engine: string | null;
+      }
+    | null;
+  if (!row?.storage_bucket || !row.storage_path) return { ok: true as const, imported: false as const };
+
+  let buffer: Buffer | null = null;
+  try {
+    const downloaded = await admin.storage.from(row.storage_bucket).download(row.storage_path);
+    const arrayBuffer = downloaded.error || !downloaded.data ? null : await downloaded.data.arrayBuffer();
+    buffer = arrayBuffer ? Buffer.from(arrayBuffer) : null;
+  } catch {
+    buffer = null;
+  }
+  if (!buffer || buffer.byteLength === 0) return { ok: true as const, imported: false as const };
+
+  const uploaded = await uploadPremiumReportBinary({
+    nickname: args.nickname,
+    requestId: args.requestId,
+    assetType: "attachment_image",
+    fileName: "generated.png",
+    mimeType: "image/png",
+    buffer,
+  });
+  if (!uploaded.ok) return { ok: false as const, reason: "upload_failed" as const, error: uploaded.error };
+
+  const meta = {
+    title: "생성 스케치(최근)",
+    description: `최근 생성 이미지(자동 첨부). 엔진=${row.engine ?? "unknown"} · feature=${row.feature_key} · 생성시각=${new Date(row.created_at).toLocaleString(
+      "ko-KR"
+    )}`,
+    original_name: row.storage_path.split("/").pop() ?? null,
+    sort_order: 0,
+    is_cover: true,
+    source: { type: "image_generation_assets", image_asset_id: row.id, created_at: row.created_at },
+  };
+
+  const { error } = await admin.from("premium_report_assets").insert({
+    request_id: args.requestId,
+    asset_type: "attachment_image",
+    storage_bucket: uploaded.bucket,
+    storage_path: uploaded.path,
+    mime_type: "image/png",
+    meta_json: meta,
+  } as never);
+
+  if (error) return { ok: false as const, reason: "db_insert_failed" as const, error: error.message };
+  return { ok: true as const, imported: true as const, imageMeta: { prompt: row.prompt, engine: row.engine, created_at: row.created_at } };
+}
+
+async function loadLatestGeneratedImageContext(nickname: string) {
+  const admin = getSupabaseAdmin();
+  if (!admin) return null;
+  const { data } = await admin
+    .from("image_generation_assets")
+    .select("created_at, feature_key, prompt, engine")
+    .eq("nickname", nickname)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const row = (data ?? null) as { created_at?: string; feature_key?: string; prompt?: string; engine?: string | null } | null;
+  if (!row?.prompt) return null;
+  const created = row.created_at ? new Date(row.created_at).toLocaleString("ko-KR") : "알 수 없음";
+  const engine = row.engine ?? "unknown";
+  const feature = row.feature_key ?? "image";
+  const prompt = String(row.prompt).trim().slice(0, 600);
+  return [
+    `최근 생성 이미지(엔진: ${engine}, 유형: ${feature}, 시각: ${created})를 바탕으로, 보고서 전체 톤을 ‘자연/일상 연필 스케치 은유’에 맞춥니다.`,
+    `- 관찰: 이미지에 담긴 장면을 ‘있는 그대로’ 짧게 묘사(과잉 해석 금지)`,
+    `- 통찰: 사용자 기록의 핵심 단어/리듬과 장면 사이의 연결을 한 문단`,
+    `- 성찰: 이번 주에 반복된 패턴/감각을 스스로 알아차리게 하는 질문 2개`,
+    `- 통섭: 다음 1주 행동(작고 구체적인 실천) 3개`,
+    ``,
+    `참고(생성 프롬프트 일부):`,
+    prompt,
+  ].join("\n");
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
@@ -258,6 +378,9 @@ export async function GET(
 
   const nickname = (requestRow as { nickname: string }).nickname;
   const snapshot = await ensureSnapshot(params.id, nickname);
+
+  // MVP: 최근 생성 이미지를 자동 첨부(커버)로 1회 가져오기 (이미지가 전혀 없을 때만)
+  await importLatestGeneratedImageAsPremiumAsset({ requestId: params.id, nickname });
 
   const [docRes, historyRes, assetRes, actionRes] = await Promise.all([
     admin
@@ -319,6 +442,7 @@ export async function GET(
     ? snapshotObj!.trend_json!.weeklyStats
     : buildWeeklyStats(recentRecords);
   const keywords = Array.isArray(snapshotObj?.trend_json?.topKeywords) ? snapshotObj.trend_json!.topKeywords! : topKeywords(recentRecords.map((row) => row.note), 6);
+  const imageContext = await loadLatestGeneratedImageContext(nickname);
   const draftSections = buildDefaultSections({
     nickname,
     records: recentRecords,
@@ -326,6 +450,7 @@ export async function GET(
     aiHistory: Array.isArray(snapshotObj?.ai_history_json) ? snapshotObj.ai_history_json : [],
     weeklyStats,
     keywords,
+    imageContext,
   });
   const summaryText = buildDefaultSummary({
     nickname,
