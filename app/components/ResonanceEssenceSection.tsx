@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { RESONANCE_ESSENCE_INTRO, RESONANCE_ESSENCES } from "@/lib/resonanceEssence";
+import {
+  RESONANCE_ESSENCE_INTRO,
+  RESONANCE_ESSENCES,
+  RESONANCE_NONE_ESSENCE,
+} from "@/lib/resonanceEssence";
 
 export default function ResonanceEssenceSection() {
   const [openId, setOpenId] = useState<string | null>(RESONANCE_ESSENCES[0]?.id ?? null);
@@ -13,7 +17,12 @@ export default function ResonanceEssenceSection() {
         <h2 className="text-sm font-medium text-slate-300">감응의 본질</h2>
         <p className="mt-2 text-xs text-slate-400 leading-relaxed">{RESONANCE_ESSENCE_INTRO}</p>
         <p className="mt-2 text-[11px] text-slate-500">
-          「기록하기」에서 감응 유형(자신·상대·소속 등)을 선택해 남길 수 있습니다.
+          「기록하기」에서 감응 유형(자신·상대·소속 등)을 고르거나, 「미선택」으로 유형을 열어 둔 채
+          남길 수 있습니다. 미선택도 ‘지금은 분류하지 않겠다’는 의미 있는 선택입니다.
+        </p>
+        <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
+          <span className="text-slate-400">{RESONANCE_NONE_ESSENCE.title} — </span>
+          {RESONANCE_NONE_ESSENCE.essence}
         </p>
       </div>
 

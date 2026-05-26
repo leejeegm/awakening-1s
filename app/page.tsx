@@ -43,7 +43,7 @@ const ResonanceNicknameSection = dynamic(() => import("./components/ResonanceNic
 const PremiumReportCTA = dynamic(() => import("./components/PremiumReportCTA"), { ssr: false });
 
 import type { DurationType, GenderType, AgeGroupType } from "./components/RecordModal";
-import type { ResonanceKindId } from "@/lib/resonanceEssence";
+import { RESONANCE_KIND_NONE, type ResonanceKindStored } from "@/lib/resonanceEssence";
 import SectionErrorBoundary from "./components/SectionErrorBoundary";
 import { checkRecordLimit, type PlanType } from "@/lib/planLimits";
 
@@ -249,7 +249,7 @@ export default function Home() {
     opts?: {
       gender?: GenderType | null;
       ageGroup?: AgeGroupType | null;
-      resonanceKind?: ResonanceKindId | null;
+      resonanceKind?: ResonanceKindStored;
       isPublic?: boolean;
     }
   ) => {
@@ -294,7 +294,7 @@ export default function Home() {
           durationType: duration,
           gender: opts?.gender ?? null,
           ageGroup: opts?.ageGroup ?? null,
-          resonanceKind: opts?.resonanceKind ?? null,
+          resonanceKind: opts?.resonanceKind ?? RESONANCE_KIND_NONE,
           isPublic: !!opts?.isPublic,
         }),
       });

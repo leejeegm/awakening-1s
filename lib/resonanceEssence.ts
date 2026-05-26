@@ -1,5 +1,10 @@
 /** 감응(Resonans) 유형별 본질 — UI·AI 참고용 */
 
+/** DB·API 저장값: 일곱 유형에 가두지 않고 찰나를 남기는 의도적 선택 */
+export const RESONANCE_KIND_NONE = "none" as const;
+
+export type ResonanceKindNone = typeof RESONANCE_KIND_NONE;
+
 export type ResonanceKindId =
   | "self"
   | "interpersonal"
@@ -8,6 +13,9 @@ export type ResonanceKindId =
   | "nature"
   | "life"
   | "other";
+
+/** DB에 저장되는 감응 값(7유형 + 미선택) */
+export type ResonanceKindStored = ResonanceKindId | ResonanceKindNone;
 
 export type ResonanceEssenceItem = {
   id: ResonanceKindId;
@@ -70,6 +78,16 @@ export const RESONANCE_ESSENCES: ResonanceEssenceItem[] = [
   },
 ];
 
+/** 미선택 — 「유형을 고르지 않음」이 아니라 열어 둔 채 기록하는 선택 */
+export const RESONANCE_NONE_ESSENCE = {
+  id: RESONANCE_KIND_NONE,
+  title: "미선택(열린 감응)",
+  essence:
+    "일곱 유형에 가두지 않고 찰나 그대로 남기는 선택. 분류보다 느낌·문장 자체에 집중할 때의 고요한 감응입니다.",
+  practice:
+    "「미선택」을 누르거나 유형 칩을 두지 않아도 됩니다. ‘지금은 이름 붙이지 않겠다’는 것도 충분히 의미 있는 기록입니다.",
+} as const;
+
 export const RESONANCE_ESSENCE_INTRO =
   "감응(Resonans)은 외부·내부 자극이 1.00초 안에 정서·의식·행동으로 드러나는 찰나의 공명입니다. 아래는 그 울림이 나뉘는 일곱 가지 본질의 안내입니다.";
 
@@ -79,9 +97,35 @@ export function isResonanceKindId(v: string): v is ResonanceKindId {
   return (RESONANCE_KIND_IDS as string[]).includes(v);
 }
 
+export function isResonanceKindNone(v: string): v is ResonanceKindNone {
+  return v === RESONANCE_KIND_NONE;
+}
+
+export function isResonanceKindStored(v: string): v is ResonanceKindStored {
+  return isResonanceKindNone(v) || isResonanceKindId(v);
+}
+
+/** API·DB 저장용: 유효한 7유형이면 그대로, 그 외(미전송·null)는 none */
+export function resolveResonanceKindForDb(raw: string | null | undefined): ResonanceKindStored {
+  const t = (raw ?? "").trim();
+  if (isResonanceKindId(t)) return t;
+  return RESONANCE_KIND_NONE;
+}
+
+/** 조회 시 NULL·빈 값은 과거 행 호환용 none */
+export function normalizeResonanceKindFromDb(
+  id: string | null | undefined
+): ResonanceKindStored {
+  if (!id || !id.trim()) return RESONANCE_KIND_NONE;
+  const t = id.trim();
+  if (isResonanceKindStored(t)) return t;
+  return RESONANCE_KIND_NONE;
+}
+
 export function resonanceKindLabel(id: string | null | undefined): string | null {
-  if (!id || !isResonanceKindId(id)) return null;
-  return RESONANCE_ESSENCES.find((e) => e.id === id)?.title ?? null;
+  const stored = normalizeResonanceKindFromDb(id);
+  if (isResonanceKindNone(stored)) return RESONANCE_NONE_ESSENCE.title;
+  return RESONANCE_ESSENCES.find((e) => e.id === stored)?.title ?? null;
 }
 
 /** 기록 모달 칩용 짧은 라벨 */
@@ -96,4 +140,9 @@ export function resonanceKindShortLabel(id: ResonanceKindId): string {
     other: "기타",
   };
   return map[id];
+}
+
+export function resonanceKindStoredShortLabel(id: ResonanceKindStored): string {
+  if (isResonanceKindNone(id)) return "미선택";
+  return resonanceKindShortLabel(id);
 }

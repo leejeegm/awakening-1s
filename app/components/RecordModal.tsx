@@ -4,7 +4,10 @@ import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import {
   RESONANCE_ESSENCES,
+  RESONANCE_KIND_NONE,
+  RESONANCE_NONE_ESSENCE,
   type ResonanceKindId,
+  type ResonanceKindStored,
   resonanceKindShortLabel,
 } from "@/lib/resonanceEssence";
 
@@ -58,7 +61,7 @@ type Props = {
     opts?: {
       gender?: GenderType | null;
       ageGroup?: AgeGroupType | null;
-      resonanceKind?: ResonanceKindId | null;
+      resonanceKind?: ResonanceKindStored;
       isPublic?: boolean;
     }
   ) => Promise<void>;
@@ -83,7 +86,7 @@ export default function RecordModal({
   const [note, setNote] = useState("");
   const [gender, setGender] = useState<GenderType | "">("defer");
   const [ageGroup, setAgeGroup] = useState<AgeGroupType | "">("defer");
-  const [resonanceKind, setResonanceKind] = useState<ResonanceKindId | "">("");
+  const [resonanceKind, setResonanceKind] = useState<ResonanceKindStored>(RESONANCE_KIND_NONE);
 
   const effectiveNickname = sharedNickname && recordAs === "shared" ? sharedNickname : nickname.trim();
   const showNicknameChoice = !!sharedNickname?.trim();
@@ -104,7 +107,7 @@ export default function RecordModal({
     await onSubmit(n, t, {
       gender: gender === "" ? null : gender,
       ageGroup: ageGroup === "" ? null : ageGroup,
-      resonanceKind: resonanceKind === "" ? null : resonanceKind,
+      resonanceKind,
       isPublic,
     });
     setNote("");
@@ -209,13 +212,14 @@ export default function RecordModal({
               </div>
             </div>
             <div>
-              <span className="block text-xs text-slate-500 mb-1.5">감응 유형 (선택)</span>
+              <span className="block text-xs text-slate-500 mb-1.5">감응 유형 (선택·미선택도 기록 의미)</span>
               <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setResonanceKind("")}
+                  title={RESONANCE_NONE_ESSENCE.essence}
+                  onClick={() => setResonanceKind(RESONANCE_KIND_NONE)}
                   className={`px-2.5 py-1 rounded-full text-[11px] border transition ${
-                    resonanceKind === ""
+                    resonanceKind === RESONANCE_KIND_NONE
                       ? "bg-slate-600 border-slate-500 text-slate-100"
                       : "bg-slate-800/80 border-slate-600 text-slate-400 hover:border-slate-500"
                   }`}
@@ -238,11 +242,11 @@ export default function RecordModal({
                   </button>
                 ))}
               </div>
-              {resonanceKind !== "" && (
-                <p className="mt-1.5 text-[11px] text-slate-500 leading-relaxed">
-                  {RESONANCE_ESSENCES.find((e) => e.id === resonanceKind)?.essence}
-                </p>
-              )}
+              <p className="mt-1.5 text-[11px] text-slate-500 leading-relaxed">
+                {resonanceKind === RESONANCE_KIND_NONE
+                  ? RESONANCE_NONE_ESSENCE.essence
+                  : RESONANCE_ESSENCES.find((e) => e.id === resonanceKind)?.essence}
+              </p>
             </div>
             <textarea
               placeholder={

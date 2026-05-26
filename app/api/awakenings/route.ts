@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { moderateForPublicShare } from "@/lib/moderation";
 import { getClientIp } from "@/lib/requestIp";
-import { isResonanceKindId } from "@/lib/resonanceEssence";
+import { resolveResonanceKindForDb } from "@/lib/resonanceEssence";
 
 type Body = {
   nickname?: string;
@@ -18,7 +18,7 @@ type AwakeningInsertRow = {
   nickname: string;
   note: string;
   duration_type: string;
-  resonance_kind?: string | null;
+  resonance_kind: string;
   is_public: boolean;
   moderation_state: "ok" | "deleted";
   moderation_reason: string | null;
@@ -101,14 +101,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const rawKind = (body.resonanceKind ?? "").trim();
-  const resonance_kind = rawKind && isResonanceKindId(rawKind) ? rawKind : null;
+  const resonance_kind = resolveResonanceKindForDb(body.resonanceKind);
 
   const insertPayload: AwakeningInsertRow = {
     nickname,
     note: noteSliced,
     duration_type: durationType,
-    ...(resonance_kind != null ? { resonance_kind } : {}),
+    resonance_kind,
     is_public: isPublic,
     moderation_state,
     moderation_reason,
