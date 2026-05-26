@@ -17,16 +17,27 @@ type ReactionCounts = Record<string, { gam: number; eung: number }>;
 
 type TopReactionRow = { id: string; note: string; created_at: string; gam: number; eung: number };
 
-const VIEW_ROTATE_MS = 30_000;
+/** 자동 전환: 내 자각 ↔ 탑20 (닉네임 있음) 또는 전체 ↔ 탑20 (없음). 감·응 차트는 별도 섹션 */
+type TimelineViewMode = "my" | "top20" | "list";
+
+const VIEW_ROTATE_MS = 100_000;
+
+function pickRandomRotateView(current: TimelineViewMode, pool: TimelineViewMode[]): TimelineViewMode {
+  const candidates = pool.filter((m) => m !== current);
+  if (candidates.length === 0) return pool[0] ?? current;
+  return candidates[Math.floor(Math.random() * candidates.length)]!;
+}
 
 export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
+  const hasNickname = !!lastRecordNickname.trim();
+
   const [list, setList] = useState<Row[]>([]);
   const [myList, setMyList] = useState<Row[]>([]);
   const [reactions, setReactions] = useState<ReactionCounts>({});
   const [top20, setTop20] = useState<TopReactionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadErrorState] = useState(false);
-  const [viewMode, setViewMode] = useState<"list" | "top20">("list");
+  const [viewMode, setViewMode] = useState<TimelineViewMode>(() => (hasNickname ? "my" : "list"));
   const [rotatePaused, setRotatePaused] = useState(false);
 
   const fetchList = async () => {
@@ -100,10 +111,14 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     setTop20(withCounts);
   }, [fetchReactions]);
 
-  const selectViewMode = useCallback((mode: "list" | "top20") => {
+  const selectViewMode = useCallback((mode: TimelineViewMode) => {
     setViewMode(mode);
     setRotatePaused(false);
   }, []);
+
+  useEffect(() => {
+    setViewMode(hasNickname ? "my" : "list");
+  }, [hasNickname]);
 
   const pauseRotate = useCallback(() => {
     setRotatePaused(true);
@@ -170,11 +185,12 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
 
   useEffect(() => {
     if (rotatePaused) return;
+    const pool: TimelineViewMode[] = hasNickname ? ["my", "top20"] : ["list", "top20"];
     const interval = setInterval(() => {
-      setViewMode((m) => (m === "list" ? "top20" : "list"));
+      setViewMode((current) => pickRandomRotateView(current, pool));
     }, VIEW_ROTATE_MS);
     return () => clearInterval(interval);
-  }, [rotatePaused]);
+  }, [rotatePaused, hasNickname]);
 
   const [reactionFeedback, setReactionFeedback] = useState<{ id: string } | null>(null);
 
@@ -276,18 +292,20 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
   );
 
   const viewModeTabs = (
-    <div className="flex flex-wrap items-center gap-2 mb-2">
-      <button
-        type="button"
-        onClick={() => selectViewMode("list")}
-        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-          viewMode === "list"
-            ? "bg-electric-blue/25 text-electric-blue border-electric-blue/40"
-            : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700"
-        }`}
-      >
-        전체 리스트
-      </button>
+    <div className="flex flex-wrap items-center gap-2 mb-2" onPointerDown={pauseRotate}>
+      {hasNickname && (
+        <button
+          type="button"
+          onClick={() => selectViewMode("my")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+            viewMode === "my"
+              ? "bg-electric-blue/25 text-electric-blue border-electric-blue/40"
+              : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700"
+          }`}
+        >
+          내 자각 (실시간)
+        </button>
+      )}
       <button
         type="button"
         onClick={() => selectViewMode("top20")}
@@ -297,12 +315,27 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
             : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700"
         }`}
       >
-        상위 반응 탑20
+        상위 반응 탑20 (실시간)
+      </button>
+      <button
+        type="button"
+        onClick={() => selectViewMode("list")}
+        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+          viewMode === "list"
+            ? "bg-slate-600/40 text-slate-200 border-slate-500/50"
+            : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700"
+        }`}
+      >
+        전체 리스트
       </button>
       {rotatePaused ? (
         <span className="text-[11px] text-amber-300">자동 전환 일시정지 (탭 선택 시 해제)</span>
       ) : (
-        <span className="text-[11px] text-slate-600">30초마다 자동 전환</span>
+        <span className="text-[11px] text-slate-600">
+          {hasNickname
+            ? "100초마다 내 자각 ↔ 탑20 랜덤 전환 (전체·감·응 차트 제외)"
+            : "100초마다 전체 ↔ 탑20 랜덤 전환"}
+        </span>
       )}
     </div>
   );
@@ -426,68 +459,42 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     </div>
   );
 
+  const renderActivePanel = () => {
+    if (viewMode === "my") {
+      return renderFullList(myList, "내 자각 실험 결과 (실시간)", "이 닉네임으로 남긴 기록이 없습니다.", {
+        hideReactionButtons: () => true,
+      });
+    }
+    if (viewMode === "top20") {
+      return renderTop20();
+    }
+    return renderFullList(
+      list,
+      "전체 실험 데이터 (실시간)",
+      hasNickname ? "아직 기록이 없습니다. 첫 자각을 남겨보세요." : "아직 기록이 없습니다.",
+      {
+        onlyShowMyNickname: lastRecordNickname,
+        hideReactionButtons: (item) => item.nickname?.trim() === lastRecordNickname.trim(),
+      }
+    );
+  };
+
   return (
     <div>
-      {lastRecordNickname.trim() && (
+      {list.length === 0 && !hasNickname && myList.length === 0 ? (
+        <button
+          type="button"
+          onClick={() => document.getElementById("record-section")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+          className="w-full py-8 text-center text-slate-500 text-sm hover:text-slate-300 transition rounded-xl border border-dashed border-slate-600 hover:border-slate-500"
+        >
+          <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-50" />
+          <span className="block">아직 기록이 없습니다. 첫 자각을 남겨보세요.</span>
+          <span className="block mt-1 text-xs text-slate-600">클릭하면 기록하기로 이동</span>
+        </button>
+      ) : (
         <>
-          {renderFullList(
-            myList,
-            "내 자각 실험 결과 (실시간)",
-            "이 닉네임으로 남긴 기록이 없습니다.",
-            { hideReactionButtons: () => true, showViewTabs: false }
-          )}
-          {viewMode === "list"
-            ? renderFullList(
-                list,
-                "전체 실험 데이터 (실시간)",
-                "아직 기록이 없습니다. 첫 자각을 남겨보세요.",
-                {
-                  onlyShowMyNickname: lastRecordNickname,
-                  hideReactionButtons: (item) => item.nickname?.trim() === lastRecordNickname.trim(),
-                  showViewTabs: true,
-                }
-              )
-            : (
-              <>
-                <div className="mb-2">{viewModeTabs}</div>
-                {renderTop20()}
-              </>
-            )}
-        </>
-      )}
-      {!lastRecordNickname.trim() && (
-        <>
-          {list.length === 0 ? (
-            <button
-              type="button"
-              onClick={() => document.getElementById("record-section")?.scrollIntoView({ behavior: "smooth", block: "center" })}
-              className="w-full py-8 text-center text-slate-500 text-sm hover:text-slate-300 transition rounded-xl border border-dashed border-slate-600 hover:border-slate-500"
-            >
-              <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <span className="block">아직 기록이 없습니다. 첫 자각을 남겨보세요.</span>
-              <span className="block mt-1 text-xs text-slate-600">클릭하면 기록하기로 이동</span>
-            </button>
-          ) : (
-            <>
-              {viewMode === "list"
-                ? renderFullList(
-                    list,
-                    "전체 실험 데이터 (실시간)",
-                    "아직 기록이 없습니다.",
-                    {
-                      onlyShowMyNickname: lastRecordNickname,
-                      hideReactionButtons: (item) => item.nickname?.trim() === lastRecordNickname.trim(),
-                      showViewTabs: true,
-                    }
-                  )
-                : (
-                  <>
-                    <div className="mb-2">{viewModeTabs}</div>
-                    {renderTop20()}
-                  </>
-                )}
-            </>
-          )}
+          <div className="mb-2">{viewModeTabs}</div>
+          {renderActivePanel()}
         </>
       )}
     </div>
