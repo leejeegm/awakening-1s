@@ -14,6 +14,47 @@ type Body = {
   isPublic?: boolean;
 };
 
+type AwakeningInsertRow = {
+  nickname: string;
+  note: string;
+  duration_type: string;
+  resonance_kind?: string | null;
+  is_public: boolean;
+  moderation_state: "ok" | "deleted";
+  moderation_reason: string | null;
+  deleted_at: string | null;
+  deleted_by: string | null;
+};
+
+function isMissingResonanceKindColumn(message: string, code?: string): boolean {
+  const m = message.toLowerCase();
+  if (m.includes("resonance_kind")) return true;
+  if (code === "PGRST204" && m.includes("resonance")) return true;
+  return (
+    (m.includes("column") && m.includes("does not exist")) ||
+    m.includes("schema cache") ||
+    m.includes("could not find")
+  );
+}
+
+/** migration 026 미적용 DB에서도 기록 저장 가능 */
+async function insertAwakeningRow(
+  admin: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  row: AwakeningInsertRow
+) {
+  const first = await admin.from("awakenings").insert(row as never);
+  if (!first.error) return { ok: true as const };
+
+  if ("resonance_kind" in row && isMissingResonanceKindColumn(first.error.message, first.error.code)) {
+    const { resonance_kind: _omit, ...withoutKind } = row;
+    const retry = await admin.from("awakenings").insert(withoutKind as never);
+    if (!retry.error) return { ok: true as const, resonanceKindSkipped: true as const };
+    return { ok: false as const, error: retry.error };
+  }
+
+  return { ok: false as const, error: first.error };
+}
+
 export async function POST(request: NextRequest) {
   const admin = getSupabaseAdmin();
   if (!admin) {
@@ -63,11 +104,11 @@ export async function POST(request: NextRequest) {
   const rawKind = (body.resonanceKind ?? "").trim();
   const resonance_kind = rawKind && isResonanceKindId(rawKind) ? rawKind : null;
 
-  const insertPayload = {
+  const insertPayload: AwakeningInsertRow = {
     nickname,
     note: noteSliced,
     duration_type: durationType,
-    resonance_kind,
+    ...(resonance_kind != null ? { resonance_kind } : {}),
     is_public: isPublic,
     moderation_state,
     moderation_reason,
@@ -75,9 +116,19 @@ export async function POST(request: NextRequest) {
     deleted_by,
   };
 
-  const { error } = await admin.from("awakenings").insert(insertPayload as never);
-  if (error) {
-    return NextResponse.json({ ok: false, error: "저장에 실패했습니다." }, { status: 500 });
+  const inserted = await insertAwakeningRow(admin, insertPayload);
+  if (!inserted.ok) {
+    console.error("[awakenings/insert]", inserted.error.message, inserted.error.code);
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          process.env.NODE_ENV === "development"
+            ? `저장에 실패했습니다. (${inserted.error.message})`
+            : "저장에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+      },
+      { status: 500 }
+    );
   }
 
   // 프로필은 선택 입력
