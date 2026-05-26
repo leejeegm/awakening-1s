@@ -59,10 +59,17 @@ export default function InsightCard({ lastRecordNickname = "", participantAuthHa
   return (
     <div className="rounded-xl bg-gradient-to-br from-slate-800/80 to-deep-violet/10 border border-slate-700/50 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-        <p className="text-[12px] text-slate-500 flex items-center gap-1">
-          <Sparkles className="w-3.5 h-3.5" />
-          {lastRecordNickname ? "맞춤 감응 카드" : "이번 감응 트렌드"}
-        </p>
+        <div>
+          <p className="text-[12px] text-slate-500 flex items-center gap-1">
+            <Sparkles className="w-3.5 h-3.5" />
+            {lastRecordNickname ? "맞춤 감응 카드" : "이번 감응 트렌드"}
+          </p>
+          <p className="text-[11px] text-slate-600 mt-0.5">
+            {lastRecordNickname
+              ? "쌓인 기록의 흐름·통찰 (따뜻한 한마디와 다른 톤)"
+              : "참여자 기록의 공통 감응 흐름"}
+          </p>
+        </div>
         <SpeechControls text={card} speakLabel="말하기" stopLabel="멈춤" />
       </div>
       <p className="text-[12px] text-slate-200 leading-relaxed">{card}</p>

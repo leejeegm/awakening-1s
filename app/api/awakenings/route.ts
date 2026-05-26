@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { moderateForPublicShare } from "@/lib/moderation";
 import { getClientIp } from "@/lib/requestIp";
+import { isResonanceKindId } from "@/lib/resonanceEssence";
 
 type Body = {
   nickname?: string;
   note?: string;
   durationType?: "1s" | "10s" | "100s";
+  resonanceKind?: string | null;
   gender?: "male" | "female" | "defer" | null;
   ageGroup?: string | null;
   isPublic?: boolean;
@@ -58,10 +60,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const rawKind = (body.resonanceKind ?? "").trim();
+  const resonance_kind = rawKind && isResonanceKindId(rawKind) ? rawKind : null;
+
   const insertPayload = {
     nickname,
     note: noteSliced,
     duration_type: durationType,
+    resonance_kind,
     is_public: isPublic,
     moderation_state,
     moderation_reason,

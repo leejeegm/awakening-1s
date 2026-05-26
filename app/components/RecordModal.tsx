@@ -2,6 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
+import {
+  RESONANCE_ESSENCES,
+  type ResonanceKindId,
+  resonanceKindShortLabel,
+} from "@/lib/resonanceEssence";
 
 export type DurationType = "1s" | "10s" | "100s";
 
@@ -50,7 +55,12 @@ type Props = {
   onSubmit: (
     nickname: string,
     note: string,
-    opts?: { gender?: GenderType | null; ageGroup?: AgeGroupType | null; isPublic?: boolean }
+    opts?: {
+      gender?: GenderType | null;
+      ageGroup?: AgeGroupType | null;
+      resonanceKind?: ResonanceKindId | null;
+      isPublic?: boolean;
+    }
   ) => Promise<void>;
   submitStatus: "idle" | "loading" | "done" | "error";
   errorMessage: string | null;
@@ -73,6 +83,7 @@ export default function RecordModal({
   const [note, setNote] = useState("");
   const [gender, setGender] = useState<GenderType | "">("defer");
   const [ageGroup, setAgeGroup] = useState<AgeGroupType | "">("defer");
+  const [resonanceKind, setResonanceKind] = useState<ResonanceKindId | "">("");
 
   const effectiveNickname = sharedNickname && recordAs === "shared" ? sharedNickname : nickname.trim();
   const showNicknameChoice = !!sharedNickname?.trim();
@@ -93,6 +104,7 @@ export default function RecordModal({
     await onSubmit(n, t, {
       gender: gender === "" ? null : gender,
       ageGroup: ageGroup === "" ? null : ageGroup,
+      resonanceKind: resonanceKind === "" ? null : resonanceKind,
       isPublic,
     });
     setNote("");
@@ -195,6 +207,42 @@ export default function RecordModal({
                   ))}
                 </select>
               </div>
+            </div>
+            <div>
+              <span className="block text-xs text-slate-500 mb-1.5">감응 유형 (선택)</span>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setResonanceKind("")}
+                  className={`px-2.5 py-1 rounded-full text-[11px] border transition ${
+                    resonanceKind === ""
+                      ? "bg-slate-600 border-slate-500 text-slate-100"
+                      : "bg-slate-800/80 border-slate-600 text-slate-400 hover:border-slate-500"
+                  }`}
+                >
+                  미선택
+                </button>
+                {RESONANCE_ESSENCES.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    title={item.essence}
+                    onClick={() => setResonanceKind(item.id)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] border transition ${
+                      resonanceKind === item.id
+                        ? "bg-electric-blue/25 border-electric-blue/60 text-electric-blue"
+                        : "bg-slate-800/80 border-slate-600 text-slate-400 hover:border-slate-500"
+                    }`}
+                  >
+                    {resonanceKindShortLabel(item.id)}
+                  </button>
+                ))}
+              </div>
+              {resonanceKind !== "" && (
+                <p className="mt-1.5 text-[11px] text-slate-500 leading-relaxed">
+                  {RESONANCE_ESSENCES.find((e) => e.id === resonanceKind)?.essence}
+                </p>
+              )}
             </div>
             <textarea
               placeholder={

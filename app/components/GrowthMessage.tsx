@@ -282,7 +282,7 @@ export default function GrowthMessage({
       {warmOpen && (
         <div className="mt-3 p-3 rounded-lg bg-slate-900/80 border border-slate-600 space-y-3">
           <p className="text-xs text-slate-400">
-            오늘 작성한 찰나·프로필을 반영한 맞춤 긍정 메시지 (100자 이내)
+            오늘 찰나에 대한 지금 이 순간 위로 (100자 이내·감응 카드와 다른 톤)
           </p>
           <div className="flex flex-wrap gap-2">
             {DURATION_OPTIONS.map((opt) => (

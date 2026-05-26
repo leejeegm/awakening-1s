@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireParticipantAuth } from "@/lib/participantApiAuth";
 import {
-  AI_KOREAN_STYLE_RULES,
-  buildAiKoreanGeminiPreamble,
-  buildAiKoreanOpenAiSystem,
-  finalizeAiKoreanMessage,
-} from "@/lib/aiKoreanMessageFormat";
+  buildInsightCardGeminiSystemPreamble,
+  buildInsightCardOpenAiSystem,
+  buildInsightCardPrompt,
+  finalizeInsightCard,
+} from "@/lib/insightCardFormat";
 import { buildRuleBasedInsightCard } from "@/lib/ruleBasedAi";
 import { geminiGenerateText } from "@/lib/gemini";
 import { chooseAiUserText } from "@/lib/aiUserText";
@@ -62,7 +62,6 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  let profileHint = "";
   let genderLabel: string | null = null;
   let ageLabel: string | null = null;
   if (nickname) {
@@ -86,10 +85,9 @@ export async function GET(request: NextRequest) {
     };
     ageLabel =
       profileRow?.age_group && profileRow.age_group !== "defer" ? ageLabels[profileRow.age_group] ?? null : null;
-    if (genderLabel || ageLabel) {
-      profileHint = ` 성별·연령(참고: ${[genderLabel, ageLabel].filter(Boolean).join(", ")})에 맞춘 공감을 담아 주세요.`;
-    }
   }
+
+  const scope = nickname ? ("personal" as const) : ("trend" as const);
 
   const ruleBased = () =>
     buildRuleBasedInsightCard({
@@ -98,30 +96,17 @@ export async function GET(request: NextRequest) {
       profileHint: { genderLabel, ageLabel },
     });
 
-  const prompt = nickname
-    ? `다음은 한 사용자의 자각 기록 일부입니다. 맞춤 감응 카드 한 문단을 작성해 주세요.${profileHint}
+  const prompt = buildInsightCardPrompt({
+    notesSample: textSample,
+    recordCount: notes.length,
+    scope,
+    profile: nickname ? { genderLabel, ageLabel } : undefined,
+  });
 
-필수 조건:
-${AI_KOREAN_STYLE_RULES}
-- 기록 속 흐름·감정을 짚는 공감과, 마음이 움직이는 작은 희망을 한데 담을 것
-
-기록:
-${textSample}`
-    : `다음은 여러 참여자의 자각 기록 일부입니다. "이번 감응 트렌드" 카드 한 문단을 작성해 주세요.
-
-필수 조건:
-${AI_KOREAN_STYLE_RULES}
-- 전체 흐름에 대한 따뜻한 공감과 가벼운 격려
-
-기록:
-${textSample}`;
-
-  const geminiPrompt =
-    `${buildAiKoreanGeminiPreamble("당신은 감응(Resonans) 맞춤 감응 카드 문구를 쓰는 도우미입니다.")}\n\n` +
-    prompt;
+  const geminiPrompt = `${buildInsightCardGeminiSystemPreamble(scope)}\n\n${prompt}`;
 
   const finalizeCard = (primary: string, ruleCard: string, usedPrimary: boolean) =>
-    finalizeAiKoreanMessage(usedPrimary ? primary : ruleCard, ruleCard, primary);
+    finalizeInsightCard(usedPrimary ? primary : ruleCard, ruleCard, primary);
 
   try {
     const g1 = await geminiGenerateText({
@@ -172,17 +157,15 @@ ${textSample}`;
         messages: [
           {
             role: "system",
-            content: buildAiKoreanOpenAiSystem(
-              "당신은 감응(Resonans) 맞춤 감응 카드 문구를 작성하는 도우미입니다."
-            ),
+            content: buildInsightCardOpenAiSystem(scope),
           },
           {
             role: "user",
             content:
               `${prompt}\n\n` +
               (refineSeed
-                ? `참고 초안(Gemini). 100자 이내로 맞춤법·문맥을 다듬고 감동적으로:\n${refineSeed}`
-                : "100자 이내로 따뜻하고 감동적으로 작성해 주세요."),
+                ? `참고 초안(Gemini). 100자 이내, 감응 카드(흐름·통찰) 톤으로 다듬기:\n${refineSeed}`
+                : "100자 이내로 맞춤 감응 카드(흐름·통찰)만 작성해 주세요."),
           },
         ],
         max_tokens: 150,

@@ -113,14 +113,14 @@ export function buildRuleBasedWarmMessage(args: {
 
   const withKw = kw
     ? [
-        `오늘 ${focus}에 「${kw}」 마음이 또렷해요. ${tone} 숨 한 번 더 깊게 쉬며 스스로를 응원해 보세요.`,
-        `기록 속 「${kw}」에서 따뜻한 결이 느껴져요. 잘하고 있어요, ${tone} 마음 편히 쉬어 가도 괜찮아요.`,
-        `「${kw}」를 붙잡은 오늘 ${focus}, 충분히 의미 있어요. ${tone} 자신을 다정히 바라봐 주세요.`,
+        `지금 이 ${focus}, 「${kw}」 마음이 고스란히 느껴져요. ${tone} 숨 한 번 깊게 쉬어도 괜찮아요.`,
+        `오늘 적은 「${kw}」에 마음이 담겨 있네요. ${tone} 오늘의 당신을 다정히 안아 주세요.`,
+        `이 찰나의 「${kw}」, 충분히 소중해요. ${tone} 지금 이 순간을 따뜻하게 인정해 주세요.`,
       ]
     : [
-        `오늘 ${focus}을 붙잡은 것만으로도 충분해요. ${tone} 숨 깊게 쉬며 스스로를 응원해 보세요.`,
-        `짧은 기록에도 마음이 잘 전해져요. 잘하고 있어요, ${tone} 오늘을 다정히 인정해 주세요.`,
-        `스스로를 놓치지 않으려는 마음이 보여요. ${tone} 천천히 숨 쉬며 오늘을 가볍게 안아 주세요.`,
+        `오늘 이 ${focus}을 붙잡은 것만으로 충분해요. ${tone} 지금 숨 깊게 쉬며 스스로를 응원해 보세요.`,
+        `짧은 오늘의 기록에도 마음이 전해져요. ${tone} 지금 이 순간, 괜찮다고 말해 주세요.`,
+        `스스로를 놓치지 않은 오늘이에요. ${tone} 잠시 눈을 감고 마음을 쉬어 가도 좋아요.`,
       ];
 
   return finalizeWarmMessage(pickSeeded(withKw, seed, 0), ...withKw);
@@ -131,17 +131,17 @@ export function buildRuleBasedInsightCard(args: {
   nickname?: string;
   profileHint?: ProfileHint;
 }): string {
-  const { notes, profileHint } = args;
+  const { notes } = args;
   const seed = seedFromNotes(notes);
   const kws = topKeywords(notes, 6);
   const k1 = kws[0] ?? "마음";
-  const tone = profileHint?.genderLabel ? "당신" : "당신";
+  const k2 = kws[1] ?? "흐름";
 
   const cards = [
-    `기록 속 「${k1}」이 오늘을 따뜻하게 비추고 있어요. ${tone}의 걸음을 조용히 응원합니다.`,
-    `「${k1}」 주변에서 스스로를 다정히 붙잡고 있네요. 그 마음이 이미 충분히 빛나요.`,
-    `짧은 문장마다 「${k1}」의 결이 스며 있어요. 오늘의 당신에게 고요한 용기를 보냅니다.`,
-    `오늘의 흐름은 「${k1}」 쪽으로 부드럽게 모입니다. 천천히 숨 쉬며 자신을 안아 주세요.`,
+    `쌓인 기록에서 「${k1}」와 「${k2}」가 조용히 이어져요. 당신만의 감응 방향이 스며들고 있어요.`,
+    `「${k1}」을 중심으로 마음이 다시 모이는 패턴이 보여요. 작은 통찰이 다음 걸음을 비출 거예요.`,
+    `여러 줄 사이 「${k1}」의 결이 반복돼요. 스스로를 돌보는 힘이 조금씩 자라고 있어요.`,
+    `기록의 흐름은 「${k1}」 쪽으로 부드럽게 기울어요. 이어지는 여정을 조용히 응원합니다.`,
   ];
   return finalizeAiKoreanMessage(pickSeeded(cards, seed, 0), ...cards);
 }

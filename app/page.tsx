@@ -20,6 +20,10 @@ const ResonancePoints = dynamic(() => import("./components/ResonancePoints"), {
   ssr: false,
   loading: () => <div className="py-4 text-center text-slate-500 text-sm">포인트 불러오는 중...</div>,
 });
+const ResonanceEssenceSection = dynamic(() => import("./components/ResonanceEssenceSection"), {
+  ssr: false,
+  loading: () => <div className="py-4 text-center text-slate-500 text-sm">감응 안내 불러오는 중...</div>,
+});
 const WordCloudViz = dynamic(() => import("./components/WordCloudViz"), {
   ssr: false,
   loading: () => <div className="py-4 text-center text-slate-500 text-sm">워드클라우드 불러오는 중...</div>,
@@ -39,6 +43,7 @@ const ResonanceNicknameSection = dynamic(() => import("./components/ResonanceNic
 const PremiumReportCTA = dynamic(() => import("./components/PremiumReportCTA"), { ssr: false });
 
 import type { DurationType, GenderType, AgeGroupType } from "./components/RecordModal";
+import type { ResonanceKindId } from "@/lib/resonanceEssence";
 import SectionErrorBoundary from "./components/SectionErrorBoundary";
 import { checkRecordLimit, type PlanType } from "@/lib/planLimits";
 
@@ -241,7 +246,12 @@ export default function Home() {
   const handleRecordSubmit = async (
     nickname: string,
     note: string,
-    opts?: { gender?: GenderType | null; ageGroup?: AgeGroupType | null; isPublic?: boolean }
+    opts?: {
+      gender?: GenderType | null;
+      ageGroup?: AgeGroupType | null;
+      resonanceKind?: ResonanceKindId | null;
+      isPublic?: boolean;
+    }
   ) => {
     const n = nickname.trim().slice(0, 20);
     const t = note.trim();
@@ -284,6 +294,7 @@ export default function Home() {
           durationType: duration,
           gender: opts?.gender ?? null,
           ageGroup: opts?.ageGroup ?? null,
+          resonanceKind: opts?.resonanceKind ?? null,
           isPublic: !!opts?.isPublic,
         }),
       });
@@ -458,6 +469,11 @@ export default function Home() {
           lastRecordNickname={lastRecordNickname}
           participantAuthHash={participantAuthHash}
         />
+      </section>
+
+      {/* 감응 유형별 본질 */}
+      <section className="px-4 mt-6" aria-label="감응의 본질">
+        <ResonanceEssenceSection />
       </section>
 
       {/* AI 맞춤 감응카드 — 공명 게이지 바로 위 */}
