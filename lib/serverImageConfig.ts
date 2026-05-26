@@ -63,13 +63,14 @@ export function buildFinalPrompt(featureKey: FeatureKey, prompt: string) {
   const globalStyle = [
     "Style: positive, calming, creative inspiration.",
     "Medium: graphite pencil sketch on paper, subtle shading, minimal lines, no color.",
-    "Subject: nature, landscape, everyday objects, quiet daily scenes, sunlight, sky, plants, small details.",
-    "Avoid: portrait, close-up face, realistic celebrity-like people, identifiable persons, text, watermark, logo.",
-    "If people appear, keep them as tiny silhouettes from behind or distant figures, not the main focus.",
+    "Subject: nature, landscape, everyday scenes (forest, sea, cafe interior, sky, walking path), sunlight, plants, small details.",
+    "Intent: express the user's key message as a gentle metaphor that encourages awareness through observation, insight, reflection, and integration (positive motivation).",
+    "Hard rule: do NOT include any humans/people/portraits/faces/bodies/hands at all.",
+    "Avoid: any person/human figure, portrait, close-up face, text, watermark, logo, signature.",
   ].join(" ");
 
   if (featureKey === "comic_4panel") {
-    return `${base}\n\n${globalStyle}\n\n4 panel comic, 2x2 grid layout, consistent mood, clean pencil line art, korean webtoon paneling (but still pencil sketch)`;
+    return `${base}\n\n${globalStyle}\n\n4 panel comic, 2x2 grid layout, consistent mood, clean pencil line art, korean webtoon paneling (but still pencil sketch). No humans in any panel.`;
   }
   return `${base}\n\n${globalStyle}`;
 }

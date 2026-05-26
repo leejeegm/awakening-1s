@@ -904,10 +904,10 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
   useEffect(() => {
     if (!open) return;
     setPrompt(
-      `다음 글을 바탕으로 이미지로 표현해줘. 개인 식별 정보는 넣지 말아줘.\n\n기본 스타일(중요): 인물/얼굴 중심 초상화는 피하고, 자연/풍경/일상 장면 위주로 긍정적이고 창의적인 영감을 주는 연필(흑연) 스케치 느낌으로 그려줘. 텍스트/로고/워터마크는 넣지 말아줘.\n\n${(baseText ?? "").trim()}`
+      `다음 글을 바탕으로 이미지로 표현해줘. 개인 식별 정보는 넣지 말아줘.\n\n기본 스타일(중요):\n- 인물(사람/얼굴/신체/손) **완전 금지**. 실루엣도 금지.\n- 자연/풍경/일상 장면 위주: 숲/바다/카페/하늘/산책길 중 하나를 선택(또는 어울리는 배경을 창의적으로 선택).\n- 사용자 글의 핵심을 ‘관찰·통찰·성찰·통섭’을 자각하게 만드는 긍정 동기부여 관점의 은유적 장면으로 구성.\n- 연필(흑연) 스케치, 종이 질감, 미니멀 라인, 은은한 음영, 무채색.\n- 텍스트/로고/워터마크 금지.\n\n${(baseText ?? "").trim()}`
     );
     setNegativePrompt(
-      "portrait, close-up face, person, realistic celebrity, text, watermark, logo, signature, phone number, email"
+      "human, people, person, man, woman, child, face, portrait, body, hands, silhouette, character, text, watermark, logo, signature, phone number, email"
     );
     setError(null);
     setImageUrl(null);
