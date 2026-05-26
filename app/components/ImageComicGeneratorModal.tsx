@@ -904,9 +904,11 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
   useEffect(() => {
     if (!open) return;
     setPrompt(
-      `다음 글을 바탕으로 이미지로 표현해줘. 개인 식별 정보는 넣지 말아줘.\n\n${(baseText ?? "").trim()}`
+      `다음 글을 바탕으로 이미지로 표현해줘. 개인 식별 정보는 넣지 말아줘.\n\n기본 스타일(중요): 인물/얼굴 중심 초상화는 피하고, 자연/풍경/일상 장면 위주로 긍정적이고 창의적인 영감을 주는 연필(흑연) 스케치 느낌으로 그려줘. 텍스트/로고/워터마크는 넣지 말아줘.\n\n${(baseText ?? "").trim()}`
     );
-    setNegativePrompt("text, watermark, logo, signature, phone number, email");
+    setNegativePrompt(
+      "portrait, close-up face, person, realistic celebrity, text, watermark, logo, signature, phone number, email"
+    );
     setError(null);
     setImageUrl(null);
     setPanels(null);

@@ -59,7 +59,17 @@ export function resolveServerDimensions(
 }
 
 export function buildFinalPrompt(featureKey: FeatureKey, prompt: string) {
-  return featureKey === "comic_4panel"
-    ? `${prompt}\n\n4 panel comic, 2x2 grid layout, consistent character, clean line art, korean webtoon style`
-    : prompt;
+  const base = (prompt ?? "").trim();
+  const globalStyle = [
+    "Style: positive, calming, creative inspiration.",
+    "Medium: graphite pencil sketch on paper, subtle shading, minimal lines, no color.",
+    "Subject: nature, landscape, everyday objects, quiet daily scenes, sunlight, sky, plants, small details.",
+    "Avoid: portrait, close-up face, realistic celebrity-like people, identifiable persons, text, watermark, logo.",
+    "If people appear, keep them as tiny silhouettes from behind or distant figures, not the main focus.",
+  ].join(" ");
+
+  if (featureKey === "comic_4panel") {
+    return `${base}\n\n${globalStyle}\n\n4 panel comic, 2x2 grid layout, consistent mood, clean pencil line art, korean webtoon paneling (but still pencil sketch)`;
+  }
+  return `${base}\n\n${globalStyle}`;
 }
