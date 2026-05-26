@@ -1,3 +1,4 @@
+import { finalizeAiKoreanMessage } from "@/lib/aiKoreanMessageFormat";
 import { finalizeWarmMessage } from "@/lib/warmMessageFormat";
 
 type ProfileHint = {
@@ -130,61 +131,32 @@ export function buildRuleBasedInsightCard(args: {
   nickname?: string;
   profileHint?: ProfileHint;
 }): string {
-  const { notes, nickname, profileHint } = args;
+  const { notes, profileHint } = args;
   const seed = seedFromNotes(notes);
   const kws = topKeywords(notes, 6);
-  const k1 = kws[0] ?? "관찰";
-  const k2 = kws[1] ?? "흐름";
-  const title = nickname ? "맞춤 감응 스냅샷" : "이번 감응 트렌드 스냅샷";
+  const k1 = kws[0] ?? "마음";
+  const tone = profileHint?.genderLabel ? "당신" : "당신";
 
-  const leads = [
-    `${title}: 기록 안에서 「${k1}」와 「${k2}」가 서로를 부드럽게 비추고 있어요.${profileBridge(profileHint)}`,
-    `${title}: 지금은 「${k1}」 쪽으로 마음이 모이고, 그 주변에서 「${k2}」가 조용히 힘을 보태는 흐름이에요.${profileBridge(profileHint)}`,
-    `${title}: 여러 줄이 한데 모이며 「${k1}」이라는 감각이 오늘의 중심을 따뜻하게 잡아 주고 있어요.${profileBridge(profileHint)}`,
+  const cards = [
+    `기록 속 「${k1}」이 오늘을 따뜻하게 비추고 있어요. ${tone}의 걸음을 조용히 응원합니다.`,
+    `「${k1}」 주변에서 스스로를 다정히 붙잡고 있네요. 그 마음이 이미 충분히 빛나요.`,
+    `짧은 문장마다 「${k1}」의 결이 스며 있어요. 오늘의 당신에게 고요한 용기를 보냅니다.`,
+    `오늘의 흐름은 「${k1}」 쪽으로 부드럽게 모입니다. 천천히 숨 쉬며 자신을 안아 주세요.`,
   ];
-  const bodies = [
-    `이 흐름을 조금 더 살리고 싶다면, 다음 기록에는 마음에 남는 단어 하나와 그때의 느낌 한 줄만 가볍게 적어 보세요.`,
-    `오늘의 감각을 너무 해석하려 애쓰지 않아도 괜찮아요. 다음엔 가장 오래 남는 단어 하나만 먼저 적어 보아도 충분해요.`,
-    `지금의 기록만으로도 이미 충분히 의미가 있어요. 다음엔 내일의 나에게 건네는 짧은 한마디처럼 이어 적어 보아도 좋아요.`,
-  ];
-  return `${pickSeeded(leads, seed, 0)} ${pickSeeded(bodies, seed, 1)}`.trim();
+  return finalizeAiKoreanMessage(pickSeeded(cards, seed, 0), ...cards);
 }
 
 export function buildRuleBasedWeeklySummary(notes: string[]): string {
   const kws = topKeywords(notes, 8);
   if (notes.length === 0) return "이번 주 기록이 없어 요약할 내용이 없습니다.";
   const seed = seedFromNotes(notes);
-  const mood = pickSeeded(
-    [
-      "차분하게 관찰을 쌓아가는 한 주",
-      "작은 변화에 귀 기울이는 한 주",
-      "방향을 스스로 조율해 가는 한 주",
-      "감각의 언어를 조금씩 넓혀 가는 한 주",
-    ],
-    seed,
-    0
-  );
-  const kwLine =
-    kws.length > 0
-      ? pickSeeded(
-          [
-            `기록 속에서 「${kws.slice(0, 3).join(" · ")}」 같은 단서들이 반복적으로 손을 흔들어요.`,
-            `이번 주 자주 등장한 감각의 단어는 ${kws.slice(0, 4).join(", ")} 쪽에 가까워 보여요.`,
-          ],
-          seed,
-          1
-        )
-      : `이번 주는 짧은 문장들이 모여 전체적인 기분의 윤곽을 만들고 있어요.`;
+  const k1 = kws[0] ?? "마음";
 
-  const next = pickSeeded(
-    [
-      "다음 주에는 가장 오래 남는 감각 하나만 골라, 하루에 한 줄씩만 적어 보세요. 그 정도면 충분해요.",
-      "다음 주에는 하루쯤 ‘오늘의 나에게 고맙다’고 적는 날을 만들어 보아도 좋아요.",
-      "다음 주는 기록 길이보다 먼저 떠오르는 한 단어를 제목처럼 붙여 보는 실험을 해 보세요.",
-    ],
-    seed,
-    2
-  );
-
-  return `이번 주는 ${mood}로 느껴져요. ${kwLine} ${next}`;
+  const summaries = [
+    `이번 주는 「${k1}」이 자주 스며든 한 주였어요. 다음 주도 당신의 걸음을 조용히 응원합니다.`,
+    `기록마다 「${k1}」의 결이 이어졌어요. 이번 주를 다정히 마무리하며 숨 한 번 깊게 쉬어 보세요.`,
+    `한 주 동안 「${k1}」을 붙잡으며 스스로를 돌보셨네요. 그 마음이 다음 주의 빛이 될 거예요.`,
+    `이번 주의 흐름은 부드러웠어요. 「${k1}」처럼 남는 감각 하나만 이어 가도 충분합니다.`,
+  ];
+  return finalizeAiKoreanMessage(pickSeeded(summaries, seed, 0), ...summaries);
 }

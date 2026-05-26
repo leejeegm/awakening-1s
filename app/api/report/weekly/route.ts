@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireParticipantAuth } from "@/lib/participantApiAuth";
 import { getWeekRangeKST } from "@/lib/weekRange";
+import {
+  AI_KOREAN_STYLE_RULES,
+  buildAiKoreanGeminiPreamble,
+  buildAiKoreanOpenAiSystem,
+  finalizeAiKoreanMessage,
+} from "@/lib/aiKoreanMessageFormat";
 import { buildRuleBasedWeeklySummary } from "@/lib/ruleBasedAi";
 import { geminiGenerateText } from "@/lib/gemini";
 import { chooseAiUserText } from "@/lib/aiUserText";
@@ -47,24 +53,24 @@ async function getSentimentSummary(
   }
 
   const text = notes.slice(0, 30).join("\n");
-  const userBlock = `다음은 한 주간의 자각 기록입니다. 이를 바탕으로 사용자가 자신의 한 주를 따뜻하게 돌아보고 다음 주를 조금 더 기대할 수 있는 주간 요약을 작성해 주세요.
+  const userBlock = `다음은 한 주간의 자각 기록입니다. 주간 감응 요약 한 문단을 작성해 주세요.
 
-작성 규칙:
-- 한국어 2~3문장
-- 첫 문장은 이번 주의 흐름을 공감하며 정리
-- 다음 문장은 기록 속에서 드러난 가능성이나 작은 희망을 짚기
-- 마지막은 부담을 주지 않는 가벼운 제안 또는 응원
-- 차가운 분석 보고서 톤, 성과 압박, 키워드 목록 나열 금지
+필수 조건:
+${AI_KOREAN_STYLE_RULES}
+- 이번 주 흐름에 대한 공감과, 다음 주를 향한 따뜻한 응원을 담을 것
 
 기록:
 ${text}`;
   const geminiPrompt =
-    "당신은 사용자의 자각 기록을 읽고 한 주를 따뜻하게 요약해 주는 도우미입니다. 한국어로 2~3문장 이내. 과학적 단정·의학 진단 금지.\n\n" +
+    `${buildAiKoreanGeminiPreamble("당신은 사용자의 자각 기록을 읽고 한 주를 요약하는 도우미입니다.")}\n\n` +
     userBlock;
+
+  const finalizeSummary = (primary: string, ruleSummary: string, usedPrimary: boolean) =>
+    finalizeAiKoreanMessage(usedPrimary ? primary : ruleSummary, ruleSummary, primary);
 
   const g1 = await geminiGenerateText({
     prompt: geminiPrompt,
-    maxOutputTokens: 320,
+    maxOutputTokens: 150,
     rateLimitKey: `weekly:${nickname}`,
   });
 
@@ -95,7 +101,12 @@ ${text}`;
 
   if (!shouldUseHighPrecision) {
     if (g1.ok && geminiChoice.usedPrimary) {
-      return { summary: geminiChoice.text, source: "gemini", model: g1.model, diagnostics: {} };
+      return {
+        summary: finalizeSummary(geminiChoice.text, ruleSummary, true),
+        source: "gemini",
+        model: g1.model,
+        diagnostics: {},
+      };
     }
     const r = ruleFallback();
     return { summary: r.summary, source: r.source, model: r.model, diagnostics: r.diagnostics };
@@ -113,27 +124,27 @@ ${text}`;
         messages: [
           {
             role: "system",
-            content:
-              "당신은 사용자의 자각 기록을 읽고 한 주를 다정하게 돌아보게 해 주는 보고서 요약을 작성하는 도우미입니다. 한국어로 2~3문장 이내로 작성하세요. " +
-              "공감과 희망이 느껴져야 하며, 마지막은 부담을 낮추는 가벼운 제안이나 응원으로 마무리하세요. 차가운 분석 보고서 톤은 금지합니다.",
+            content: buildAiKoreanOpenAiSystem(
+              "당신은 사용자의 자각 기록을 읽고 한 주를 요약하는 보고서 도우미입니다."
+            ),
           },
           {
             role: "user",
             content:
               `${userBlock}\n\n` +
               (g1.ok
-                ? `참고로 Gemini가 1차 요약을 만들었습니다. 의미는 유지하되 더 따뜻하고 자연스럽게 다듬어 주세요 (2~3문장). 사용자가 위로와 작은 용기를 얻는 느낌이 우선입니다.\nGemini 초안:\n${g1.text}`
+                ? `참고 초안(Gemini). 100자 이내로 맞춤법·문맥을 다듬고 감동적으로:\n${g1.text}`
                 : ""),
           },
         ],
-        max_tokens: 300,
+        max_tokens: 150,
       }),
     });
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
       if (g1.ok && geminiChoice.usedPrimary) {
         return {
-          summary: geminiChoice.text,
+          summary: finalizeSummary(geminiChoice.text, ruleSummary, true),
           source: "gemini",
           model: g1.model,
           diagnostics: {
@@ -162,7 +173,7 @@ ${text}`;
     if (!openaiChoice.usedPrimary) {
       if (g1.ok && geminiChoice.usedPrimary) {
         return {
-          summary: geminiChoice.text,
+          summary: finalizeSummary(geminiChoice.text, ruleSummary, true),
           source: "gemini",
           model: g1.model,
           diagnostics: {
@@ -185,10 +196,20 @@ ${text}`;
         },
       };
     }
-    return { summary: openaiChoice.text, source: "openai", model: "gpt-4o", diagnostics: {} };
+    return {
+      summary: finalizeSummary(openaiChoice.text, ruleSummary, openaiChoice.usedPrimary),
+      source: "openai",
+      model: "gpt-4o",
+      diagnostics: {},
+    };
   } catch {
     if (g1.ok && geminiChoice.usedPrimary) {
-      return { summary: geminiChoice.text, source: "gemini", model: g1.model, diagnostics: { openaiRefineFailed: true } };
+      return {
+        summary: finalizeSummary(geminiChoice.text, ruleSummary, true),
+        source: "gemini",
+        model: g1.model,
+        diagnostics: { openaiRefineFailed: true },
+      };
     }
     const r = ruleFallback();
     return { summary: r.summary, source: r.source, model: r.model, diagnostics: r.diagnostics };

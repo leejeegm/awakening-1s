@@ -170,8 +170,8 @@ export async function GET(request: NextRequest) {
             content:
               `${prompt}\n\n` +
               (refineSeed
-                ? `참고 초안(Gemini). 50~100자로 다듬어 주세요:\n${refineSeed}`
-                : "50~100자로 공감과 긍정 격려를 담아 작성해 주세요."),
+                ? `참고 초안(Gemini). 100자 이내로 맞춤법·문맥을 다듬고 감동적으로:\n${refineSeed}`
+                : "100자 이내로 공감과 감동적인 격려를 담아 작성해 주세요."),
           },
         ],
         max_tokens: 150,
