@@ -1,3 +1,5 @@
+import { finalizeWarmMessage } from "@/lib/warmMessageFormat";
+
 type ProfileHint = {
   genderLabel?: string | null;
   ageLabel?: string | null;
@@ -94,43 +96,33 @@ export function buildRuleBasedWarmMessage(args: {
   const { notes, durationType, profileHint } = args;
   const seed = seedFromNotes(notes);
   const kws = topKeywords(notes, 5);
-  const kwFrag = kws.length ? kws.slice(0, 3).join(", ") : "";
+  const kw = kws.length ? pickSeeded(kws, seed, 1) : "";
   const focus =
     durationType === "1s"
-      ? "순간의 감각"
+      ? "순간"
       : durationType === "10s"
-        ? "이어지는 흐름"
-        : "잡아가는 방향";
+        ? "흐름"
+        : "방향";
+  const tone =
+    profileHint?.ageLabel && profileHint.ageLabel.includes("10")
+      ? "가볍게"
+      : profileHint?.genderLabel
+        ? "다정히"
+        : "천천히";
 
-  const openers = [
-    `오늘 남긴 기록에는 이미 ${focus}을 알아차리는 힘이 담겨 있어요.${profileBridge(profileHint)}`,
-    `짧은 문장 안에도 오늘 마음이 어디를 향하는지 충분히 전해져요.${profileBridge(profileHint)}`,
-    `지금 적어 둔 몇 줄만으로도, 스스로를 꽤 다정하게 바라보고 있다는 게 느껴져요.${profileBridge(profileHint)}`,
-    `오늘의 찰나를 그냥 지나치지 않고 붙잡아 둔 것만으로도 이미 중요한 걸 해낸 거예요.${profileBridge(profileHint)}`,
-  ];
-  const middles =
-    kwFrag.length > 0
-      ? [
-          `특히 「${pickSeeded(kws, seed, 1)}」라는 단어 주변에서 붙잡고 싶은 마음의 결이 선명하게 느껴져요.`,
-          `오늘 기록에서는 「${pickSeeded(kws, seed, 2)}」 쪽으로 마음이 자연스럽게 기울고 있는 듯해요.`,
-          `문장 사이사이에서 「${pickSeeded(kws, seed, 3)}」를 놓치고 싶지 않은 마음이 조용히 이어져요.`,
-        ]
-      : [
-          `오늘의 기록은 작은 변화의 신호를 부드럽게 알려 주는 쪽에 가까워 보여요.`,
-          `짧은 문장이지만, 스스로를 놓치지 않으려는 마음이 또렷하게 읽혀요.`,
-        ];
+  const withKw = kw
+    ? [
+        `오늘 ${focus}에 「${kw}」 마음이 또렷해요. ${tone} 숨 한 번 더 깊게 쉬며 스스로를 응원해 보세요.`,
+        `기록 속 「${kw}」에서 따뜻한 결이 느껴져요. 잘하고 있어요, ${tone} 마음 편히 쉬어 가도 괜찮아요.`,
+        `「${kw}」를 붙잡은 오늘 ${focus}, 충분히 의미 있어요. ${tone} 자신을 다정히 바라봐 주세요.`,
+      ]
+    : [
+        `오늘 ${focus}을 붙잡은 것만으로도 충분해요. ${tone} 숨 깊게 쉬며 스스로를 응원해 보세요.`,
+        `짧은 기록에도 마음이 잘 전해져요. 잘하고 있어요, ${tone} 오늘을 다정히 인정해 주세요.`,
+        `스스로를 놓치지 않으려는 마음이 보여요. ${tone} 천천히 숨 쉬며 오늘을 가볍게 안아 주세요.`,
+      ];
 
-  const closers = [
-    `너무 빨리 정리하거나 잘하려고 애쓰지 않아도 괜찮아요. 다음 한 번은 가장 먼저 남고 싶은 단어 하나만 적고, 그때 닿은 느낌을 한 문장만 덧붙여 보세요.`,
-    `지금 필요한 건 더 많은 설명보다 한 번의 다정한 포착일 수 있어요. 다음 기록은 가장 먼저 떠오르는 단어 하나와 그 순간의 숨결 한 줄이면 충분해요.`,
-    `오늘의 감각을 있는 그대로 믿어 보세요. 다음에는 그 순간에 가까웠던 단어 하나를 먼저 적고, 왜 마음에 남았는지만 짧게 이어 보아도 좋아요.`,
-    `성과나 결론까지 한 번에 가려 하지 않아도 괜찮아요. 오늘 붙잡힌 감각 하나를 먼저 적고, 그 뒤에 마음의 온도를 한 문장만 남겨 보세요.`,
-  ];
-
-  const o = pickSeeded(openers, seed, 0);
-  const m = pickSeeded(middles, seed, 4);
-  const c = pickSeeded(closers, seed, 5);
-  return [o, m, c].join(" ");
+  return finalizeWarmMessage(pickSeeded(withKw, seed, 0), ...withKw);
 }
 
 export function buildRuleBasedInsightCard(args: {

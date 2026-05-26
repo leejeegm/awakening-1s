@@ -4,6 +4,12 @@ import { requireParticipantAuth } from "@/lib/participantApiAuth";
 import { buildRuleBasedWarmMessage } from "@/lib/ruleBasedAi";
 import { geminiGenerateText } from "@/lib/gemini";
 import { chooseAiUserText } from "@/lib/aiUserText";
+import {
+  buildWarmMessageGeminiSystemPreamble,
+  buildWarmMessageOpenAiSystemPrompt,
+  buildWarmMessagePrompt,
+  finalizeWarmMessage,
+} from "@/lib/warmMessageFormat";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
@@ -21,6 +27,14 @@ function getTodayKSTRange(): { from: string; to: string } {
     from: `${todayStr}T00:00:00.000+09:00`,
     to: `${todayStr}T23:59:59.999+09:00`,
   };
+}
+
+function resolveWarmMessage(
+  primary: string,
+  ruleMessage: string,
+  usedPrimary: boolean
+): string {
+  return finalizeWarmMessage(usedPrimary ? primary : ruleMessage, ruleMessage, primary);
 }
 
 export async function GET(request: NextRequest) {
@@ -88,24 +102,12 @@ export async function GET(request: NextRequest) {
   const ageLabel = profileRow?.age_group && profileRow.age_group !== "defer"
     ? ageLabels[profileRow.age_group] ?? null
     : null;
-  const profileHint =
-    genderLabel || ageLabel
-      ? ` (참고: ${[genderLabel, ageLabel].filter(Boolean).join(", ")}에 맞춰 공감할 수 있게)`
-      : "";
 
-  const text = notes.join("\n");
-  const prompt = `다음은 오늘 사용자가 작성한 ${notes.length}개의 '${validDuration} 찰나' 기록입니다. 이를 바탕으로 사용자가 "이해받고 있다"는 느낌을 받을 수 있는 따뜻한 한마디를 한국어로 1~2문장으로 작성해 주세요.${profileHint}
-
-작성 규칙:
-- 첫 문장은 지금의 마음이나 흐름을 다정하게 알아봐 주는 공감
-- 둘째 문장은 부담을 낮추는 작은 위로 또는 아주 가벼운 제안 1가지
-- 성과, 생산성, 수익, 효율을 압박하는 말투 금지
-- "오늘의 키워드:" 같은 목록형 표현, 따옴표 나열, 점(·) 나열 금지
-- "(을)를", "(이)가" 같은 어색한 조사 표기 금지
-- 짧지만 사람 냄새가 나게, 따뜻한 친구가 건네는 말처럼 작성
-
-기록:
-${text}`;
+  const prompt = buildWarmMessagePrompt({
+    notes,
+    durationType: validDuration as "1s" | "10s" | "100s",
+    profile: { genderLabel, ageLabel },
+  });
 
   const ruleBased = () =>
     buildRuleBasedWarmMessage({
@@ -115,13 +117,10 @@ ${text}`;
     });
 
   try {
-    const geminiPrompt =
-      "당신은 사용자의 짧은 자각 기록을 읽고, 성장에 도움이 되는 따뜻한 한마디를 한국어로 1~2문장으로 작성하는 도우미입니다. " +
-      "과장/단정/진단(의학적 판단) 없이 공감과 실행 가능한 한 가지 제안을 담으세요.\n\n" +
-      prompt;
+    const geminiPrompt = `${buildWarmMessageGeminiSystemPreamble()}\n\n${prompt}`;
     const g1 = await geminiGenerateText({
       prompt: geminiPrompt,
-      maxOutputTokens: 220,
+      maxOutputTokens: 180,
       rateLimitKey: `warm:${nickname}`,
     });
     const ruleMessage = ruleBased();
@@ -130,14 +129,14 @@ ${text}`;
     const shouldUseHighPrecision = validDuration === "1s";
 
     if (!OPENAI_API_KEY || !shouldUseHighPrecision) {
-      const message = g1.ok ? geminiChoice.text : ruleMessage;
+      const message = resolveWarmMessage(geminiChoice.text, ruleMessage, geminiChoice.usedPrimary);
       try {
         await admin.from("ai_generated_content").insert({
           nickname,
           content_type: "warm_message",
           content: message,
           meta: g1.ok && geminiChoice.usedPrimary
-            ? { durationType: validDuration, source: "gemini", model: g1.model }
+            ? { durationType: validDuration, source: "gemini", model: g1.model, charCount: message.length }
             : {
                 durationType: validDuration,
                 source: "rule",
@@ -146,6 +145,7 @@ ${text}`;
                 geminiStatus: !g1.ok ? g1.status ?? null : null,
                 geminiFailureKind: !g1.ok ? g1.failureKind : null,
                 geminiAwkwardOutput: g1.ok ? true : null,
+                charCount: message.length,
               },
         } as never);
       } catch {
@@ -154,7 +154,7 @@ ${text}`;
       return NextResponse.json({ message });
     }
 
-    const refineSeed = g1.ok ? g1.text : "";
+    const refineSeed = g1.ok ? geminiChoice.text : "";
     const res = await fetch(OPENAI_URL, {
       method: "POST",
       headers: {
@@ -164,29 +164,23 @@ ${text}`;
       body: JSON.stringify({
         model: "gpt-4o",
         messages: [
-          {
-            role: "system",
-            content:
-              "당신은 사용자의 자각 기록을 읽고 따뜻한 위로와 공감을 짧게 전하는 도우미입니다. 한국어로 1~2문장 이내로 작성하세요. " +
-              "첫 문장은 공감, 둘째 문장은 부담을 낮추는 작은 제안 또는 위로로 마무리하세요. " +
-              "성과/생산성/수익 압박, 키워드 목록, 점(·) 나열, 어색한 조사 표기 '(을)를' 같은 표현은 금지합니다.",
-          },
+          { role: "system", content: buildWarmMessageOpenAiSystemPrompt() },
           {
             role: "user",
             content:
               `${prompt}\n\n` +
               (refineSeed
-                ? `참고로 Gemini가 1차로 만든 문장이 있습니다. 이를 더 자연스럽고 따뜻하게 다듬어 주세요(1~2문장 유지). 사용자가 위로받는 느낌이 우선이고, 생산성 압박처럼 들리면 안 됩니다.\nGemini 초안:\n${refineSeed}`
-                : "1~2문장으로 공감과 위로를 먼저 주고, 아주 가벼운 제안 1가지만 포함해 작성해 주세요."),
+                ? `참고 초안(Gemini). 50~100자로 다듬어 주세요:\n${refineSeed}`
+                : "50~100자로 공감과 긍정 격려를 담아 작성해 주세요."),
           },
         ],
-        max_tokens: 200,
+        max_tokens: 150,
       }),
     });
 
     if (!res.ok) {
       const err = await res.text().catch(() => "");
-      const message = g1.ok ? geminiChoice.text : ruleMessage;
+      const message = resolveWarmMessage(geminiChoice.text, ruleMessage, geminiChoice.usedPrimary);
       try {
         await admin.from("ai_generated_content").insert({
           nickname,
@@ -203,6 +197,7 @@ ${text}`;
             geminiError: !g1.ok ? g1.error : null,
             geminiStatus: !g1.ok ? g1.status ?? null : null,
             geminiFailureKind: !g1.ok ? g1.failureKind : null,
+            charCount: message.length,
           },
         } as never);
       } catch {
@@ -214,7 +209,7 @@ ${text}`;
     const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     const rawMsg = json.choices?.[0]?.message?.content?.trim();
     const openaiChoice = chooseAiUserText(rawMsg, g1.ok ? geminiChoice.text : ruleMessage);
-    const message = openaiChoice.text;
+    const message = resolveWarmMessage(openaiChoice.text, ruleMessage, openaiChoice.usedPrimary);
     const fallbackSource = g1.ok && geminiChoice.usedPrimary ? "gemini" : "rule";
 
     try {
@@ -229,6 +224,7 @@ ${text}`;
                 source: "openai",
                 model: "gpt-4o",
                 upstream: g1.ok && geminiChoice.usedPrimary ? { source: "gemini", model: g1.model } : { source: "rule" },
+                charCount: message.length,
               }
             : {
                 durationType: validDuration,
@@ -238,6 +234,7 @@ ${text}`;
                 openaiAwkwardOutput: rawMsg && rawMsg.length > 0 ? true : null,
                 geminiModel: g1.ok && geminiChoice.usedPrimary ? g1.model : null,
                 geminiAwkwardOutput: g1.ok && !geminiChoice.usedPrimary ? true : null,
+                charCount: message.length,
               },
       } as never);
     } catch {
@@ -246,15 +243,13 @@ ${text}`;
     return NextResponse.json({ message });
   } catch (e) {
     const g1 = await geminiGenerateText({
-      prompt:
-        "한국어로 1~2문장 따뜻한 한마디를 작성해 주세요. 공감과 위로가 먼저 느껴져야 하며, 키워드 목록이나 어색한 조사 표기는 쓰지 마세요.\n\n" +
-        prompt,
-      maxOutputTokens: 220,
+      prompt: `${buildWarmMessageGeminiSystemPreamble()}\n\n${prompt}`,
+      maxOutputTokens: 180,
       rateLimitKey: `warm:${nickname}`,
     });
     const ruleMessage = ruleBased();
     const geminiChoice = chooseAiUserText(g1.ok ? g1.text : "", ruleMessage);
-    const message = g1.ok ? geminiChoice.text : ruleMessage;
+    const message = resolveWarmMessage(geminiChoice.text, ruleMessage, geminiChoice.usedPrimary);
     try {
       await admin.from("ai_generated_content").insert({
         nickname,
@@ -269,6 +264,7 @@ ${text}`;
           geminiError: !g1.ok ? g1.error : null,
           geminiStatus: !g1.ok ? g1.status ?? null : null,
           geminiFailureKind: !g1.ok ? g1.failureKind : null,
+          charCount: message.length,
         },
       } as never);
     } catch {
