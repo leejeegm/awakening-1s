@@ -1003,8 +1003,9 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
   const generateLocal = async (promptOverride?: string): Promise<{ url: string; warn?: string }> => {
     const url = resolveLocalEngineUrl(localEngineUrl, localEnginePreset);
     const steps = 20;
-    const width = feature === "comic_4panel" ? 1024 : 768;
-    const height = feature === "comic_4panel" ? 1024 : 512;
+    // 흑백 연필 러프 스케치: 속도/안정성을 위해 기본 해상도는 낮게 유지
+    const width = feature === "comic_4panel" ? 512 : 512;
+    const height = feature === "comic_4panel" ? 512 : 512;
     const { positiveText, negativeText } = buildPromptTexts(feature, promptOverride ?? prompt, negativePrompt);
 
     if (localEnginePreset === "comfyui") {
@@ -1311,7 +1312,9 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
         await new Promise((r) => setTimeout(r, interval));
       }
       throw new Error(
-        "생성 대기 시간이 초과되었습니다. GPU가 느리면 IMAGE_SERVER_TIMEOUT_MS·해상도를 확인하거나 sync 모드·Vercel Pro를 검토해 주세요."
+        process.env.NODE_ENV === "development"
+          ? "생성 대기 시간이 초과되었습니다. GPU가 느리면 IMAGE_SERVER_TIMEOUT_MS·해상도를 확인하거나 sync 모드·Vercel Pro를 검토해 주세요."
+          : "생성이 지연되고 있어요. 잠시 후 다시 시도해 주세요."
       );
     }
 
@@ -2261,7 +2264,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
               캐시 재사용됨: 동일 요청은 비용/엔진 호출 없이 즉시 표시됩니다.
             </p>
           )}
-          {usage && mode === "server" && (
+          {usage && mode === "server" && process.env.NODE_ENV === "development" && (
             <p className="text-[11px] text-slate-500">
               서버 사용량: 오늘 {usage.usedToday}/{usage.dailyLimit}, 이번 달 {usage.usedMonth}/{usage.monthlyLimit}
             </p>
