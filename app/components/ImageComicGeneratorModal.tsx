@@ -1276,7 +1276,9 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
     if (json.mode === "async" && json.jobId) {
       const pollPath = json.pollUrl ?? `/api/ai/image/jobs/${json.jobId}`;
       const interval = json.pollIntervalMs ?? 2500;
-      const maxMs = json.pollMaxMs ?? 120_000;
+      const baseMaxMs = json.pollMaxMs ?? 120_000;
+      // 4컷은 4장을 순차 생성하므로 서버 대기 시간을 조금 더 허용
+      const maxMs = feature === "comic_4panel" ? Math.min(240_000, Math.floor(baseMaxMs * 1.5)) : baseMaxMs;
       const started = Date.now();
       applyServerUsage(json.usage);
       setServerProgress(
@@ -1311,10 +1313,11 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
         }
         await new Promise((r) => setTimeout(r, interval));
       }
+      await loadHistory().catch(() => {});
       throw new Error(
         process.env.NODE_ENV === "development"
           ? "생성 대기 시간이 초과되었습니다. GPU가 느리면 IMAGE_SERVER_TIMEOUT_MS·해상도를 확인하거나 sync 모드·Vercel Pro를 검토해 주세요."
-          : "생성이 지연되고 있어요. 잠시 후 다시 시도해 주세요."
+          : "생성이 지연되고 있어요. 잠시 후 다시 시도하거나 아래 「최근 생성(서버)」에서 새로고침으로 확인해 주세요."
       );
     }
 
