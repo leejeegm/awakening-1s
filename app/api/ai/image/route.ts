@@ -142,20 +142,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       mode: "async",
       provider,
-      providerLabel: providerDisplayName(provider),
+      providerLabel: process.env.NODE_ENV === "development" ? providerDisplayName(provider) : undefined,
       jobId: created.job.id,
       status: created.job.status,
       pollUrl: `/api/ai/image/jobs/${created.job.id}`,
-      dimensions: { width: dims.width, height: dims.height, steps: dims.steps },
+      dimensions: process.env.NODE_ENV === "development" ? { width: dims.width, height: dims.height, steps: dims.steps } : undefined,
       pollIntervalMs: cfg.pollIntervalMs,
       pollMaxMs: cfg.pollMaxMs,
-      hint: `생성이 끝날 때까지 잠시 기다려 주세요. (${providerDisplayName(provider)}, ${dims.width}×${dims.height})`,
-      usage: {
-        usedToday: limitRes.usedToday,
-        dailyLimit: limitRes.dailyLimit,
-        usedMonth: limitRes.usedMonth,
-        monthlyLimit: limitRes.monthlyLimit,
-      },
+      hint:
+        process.env.NODE_ENV === "development"
+          ? `생성이 끝날 때까지 잠시 기다려 주세요. (${providerDisplayName(provider)}, ${dims.width}×${dims.height})`
+          : "생성이 끝날 때까지 잠시 기다려 주세요.",
+      usage: process.env.NODE_ENV === "development"
+        ? {
+            usedToday: limitRes.usedToday,
+            dailyLimit: limitRes.dailyLimit,
+            usedMonth: limitRes.usedMonth,
+            monthlyLimit: limitRes.monthlyLimit,
+          }
+        : undefined,
     });
   }
 
