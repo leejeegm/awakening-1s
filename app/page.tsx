@@ -316,7 +316,7 @@ export default function Home() {
       }
       if (json.resonanceKindAiLabel) {
         setRecordSuccessHint(
-          `미선택으로 저장했습니다. AI 추천 감응: ${json.resonanceKindAiLabel} (분석·통계에 반영)`
+          `미선택으로 저장했습니다. AI 추천 감응: ${json.resonanceKindAiLabel}`
         );
       }
     } catch {

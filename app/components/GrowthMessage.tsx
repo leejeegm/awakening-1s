@@ -118,7 +118,7 @@ export default function GrowthMessage({
       return;
     }
     if (!participantAuthHash.trim()) {
-      setWarmError("내 기록 보기에서 닉네임·비밀번호 조회 후 이용할 수 있습니다.");
+      setWarmError("자각 기록 보기(닉네임 비번 설정) 에서 자신의 비밀번호 조회 후 이용할 수 있습니다.");
       setWarmMessage(null);
       return;
     }
@@ -157,7 +157,7 @@ export default function GrowthMessage({
       return;
     }
     if (!participantAuthHash.trim()) {
-      setPastError("내 기록 보기에서 닉네임·비밀번호 조회 후 이용할 수 있습니다.");
+      setPastError("자각 기록 보기(닉네임 비번 설정) 에서 자신의 비밀번호 조회 후 이용할 수 있습니다.");
       setPastItems([]);
       return;
     }

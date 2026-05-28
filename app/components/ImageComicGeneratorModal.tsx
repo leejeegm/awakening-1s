@@ -727,6 +727,32 @@ async function splitToFourPanels(dataUrl: string) {
   return panels;
 }
 
+async function combineFourPanelsToGrid(panelUrls: string[]) {
+  const imgs = await Promise.all(
+    panelUrls.map(
+      (u) =>
+        new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.src = u;
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error("이미지 로드 실패"));
+        })
+    )
+  );
+  const w = Math.max(1, imgs[0]!.width);
+  const h = Math.max(1, imgs[0]!.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = w * 2;
+  canvas.height = h * 2;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(imgs[0]!, 0, 0, w, h);
+  ctx.drawImage(imgs[1]!, w, 0, w, h);
+  ctx.drawImage(imgs[2]!, 0, h, w, h);
+  ctx.drawImage(imgs[3]!, w, h, w, h);
+  return canvas.toDataURL("image/png");
+}
+
 export default function ImageComicGeneratorModal({ open, onClose, nickname, authHash = "", baseText }: Props) {
   const [mode, setMode] = useState<Mode>("local");
   const [feature, setFeature] = useState<Feature>("image_cut");
@@ -974,12 +1000,12 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
     }
   }, [open, mode, authHash, apiNickname, loadHistory]);
 
-  const generateLocal = async (): Promise<{ url: string; warn?: string }> => {
+  const generateLocal = async (promptOverride?: string): Promise<{ url: string; warn?: string }> => {
     const url = resolveLocalEngineUrl(localEngineUrl, localEnginePreset);
     const steps = 20;
     const width = feature === "comic_4panel" ? 1024 : 768;
     const height = feature === "comic_4panel" ? 1024 : 512;
-    const { positiveText, negativeText } = buildPromptTexts(feature, prompt, negativePrompt);
+    const { positiveText, negativeText } = buildPromptTexts(feature, promptOverride ?? prompt, negativePrompt);
 
     if (localEnginePreset === "comfyui") {
       try {
@@ -1169,7 +1195,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
     if (usage) setUsage(usage);
   };
 
-  const generateServer = async (): Promise<{ url: string; warn?: string }> => {
+  const generateServer = async (promptOverride?: string): Promise<{ url: string; warn?: string }> => {
     if (!authHash.trim()) {
       throw new Error("먼저 「자각 기록 보기」에서 닉네임·비밀번호로 조회해 주세요.");
     }
@@ -1198,7 +1224,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
         nickname: apiNickname,
         authHash: authHash.trim(),
         featureKey: feature,
-        prompt,
+        prompt: promptOverride ?? prompt,
         negativePrompt,
       }),
     });
@@ -1307,8 +1333,29 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
     setPanels(null);
     setStorageWarning(null);
     try {
-      const out =
-        mode === "local" ? await generateLocal() : await generateServer();
+      if (feature === "comic_4panel") {
+        const panelHints = [
+          "Panel 1: opening — quiet arrival, morning soft light, simple objects.",
+          "Panel 2: tension — midday hard light, subtle contrast, different place & props.",
+          "Panel 3: turning point — dusk or rain, shift in mood, different place & props.",
+          "Panel 4: resolve — night calm glow, gentle closure, different place & props.",
+        ];
+        const outputs: string[] = [];
+        for (let i = 0; i < 4; i++) {
+          setServerProgress(`4컷 생성 중… (${i + 1}/4)`);
+          const panelPrompt = `${prompt}\n\n${panelHints[i]}`;
+          const out = mode === "local" ? await generateLocal(panelPrompt) : await generateServer(panelPrompt);
+          outputs.push(out.url);
+          if ("warn" in out && out.warn) setStorageWarning(out.warn);
+        }
+        setPanels(outputs);
+        const grid = await combineFourPanelsToGrid(outputs);
+        if (grid) setImageUrl(grid);
+      } else {
+        const out = mode === "local" ? await generateLocal() : await generateServer();
+        setImageUrl(out.url);
+        if ("warn" in out && out.warn) setStorageWarning(out.warn);
+      }
       if (mode === "local") {
         const resolvedUrl = resolveLocalEngineUrl(localEngineUrl, localEnginePreset);
         if (autoSaveLocalEngines) {
@@ -1324,12 +1371,6 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
           tone: "success",
           message: `생성 성공: ${resolvedUrl}`,
         });
-      }
-      setImageUrl(out.url);
-      if ("warn" in out && out.warn) setStorageWarning(out.warn);
-      if (feature === "comic_4panel") {
-        const p = await splitToFourPanels(out.url);
-        setPanels(p);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1574,7 +1615,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
                 「자각 기록 보기」에서 닉네임·비밀번호 조회 후 서버 생성을 사용할 수 있습니다.
               </p>
             )}
-            {mode === "server" && serverFeatures[feature] && (
+            {mode === "server" && serverFeatures[feature] && process.env.NODE_ENV === "development" && (
               <p className="text-[11px] text-slate-500 leading-relaxed">
                 서버 생성은 요청 접수 후 자동으로 진행합니다(MVP: 기본{" "}
                 <strong className="text-slate-400">Google Gemini</strong>, 키 없으면 Pollinations·WebUI 순).
@@ -2183,7 +2224,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
           )}
 
           <label className="block">
-            <span className="text-xs text-slate-400">3. 프롬프트</span>
+            <span className="text-xs text-slate-400">3. 프롬프트(수정하지 마세요. 내용 변경시 서버 생성 실패할 수 있음)</span>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -2191,7 +2232,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
             />
           </label>
           <label className="block">
-            <span className="text-xs text-slate-400">네거티브(선택)</span>
+            <span className="text-xs text-slate-400">네거티브(선택-수정하지 마세요)</span>
             <input
               value={negativePrompt}
               onChange={(e) => setNegativePrompt(e.target.value)}
@@ -2247,7 +2288,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
 
           {panels && panels.length === 4 && (
             <div className="space-y-2">
-              <p className="text-xs text-slate-500">4면 분할(자동 분할)</p>
+              <p className="text-xs text-slate-500">4컷 (서로 다른 4장)</p>
               <div className="grid grid-cols-2 gap-2">
                 {panels.map((p, i) => (
                   <a key={i} href={p} download={`panel-${i + 1}.png`} className="block">
@@ -2255,7 +2296,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
                   </a>
                 ))}
               </div>
-              <p className="text-[11px] text-slate-600">각 패널 클릭하면 개별 다운로드됩니다.</p>
+              <p className="text-[11px] text-slate-600">각 패널을 개별 생성합니다. 클릭하면 개별 다운로드됩니다.</p>
             </div>
           )}
 
