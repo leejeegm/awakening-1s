@@ -18,7 +18,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   nickname: string;
-  /** 「내 자각 실험 결과 보기」조회 후 받은 비밀번호 SHA-256 hex */
+  /** 「자각 기록 보기」조회 후 받은 비밀번호 SHA-256 hex */
   authHash?: string;
   baseText: string;
 };
@@ -1171,7 +1171,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
 
   const generateServer = async (): Promise<{ url: string; warn?: string }> => {
     if (!authHash.trim()) {
-      throw new Error("먼저 「내 자각 실험 결과 보기」에서 닉네임·비밀번호로 조회해 주세요.");
+      throw new Error("먼저 「자각 기록 보기」에서 닉네임·비밀번호로 조회해 주세요.");
     }
     const entRes = await fetch(
       `/api/entitlements?nickname=${encodeURIComponent(apiNickname)}&authHash=${encodeURIComponent(authHash.trim())}`
@@ -1181,7 +1181,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
       error?: string;
     };
     if (entRes.status === 401) {
-      throw new Error(entJson.error ?? "먼저 「내 자각 실험 결과 보기」에서 조회해 주세요.");
+      throw new Error(entJson.error ?? "먼저 「자각 기록 보기」에서 조회해 주세요.");
     }
     if (!entJson.features?.[feature]) {
       throw new Error(
@@ -1225,7 +1225,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
     if (res.status === 401) {
       throw new Error(
         json.requiresAuth
-          ? "세션이 만료되었을 수 있습니다. 「내 자각 실험 결과 보기」에서 다시 조회해 주세요."
+          ? "세션이 만료되었을 수 있습니다. 「자각 기록 보기」에서 다시 조회해 주세요."
           : (json.error ?? "인증 실패")
       );
     }
@@ -1571,7 +1571,7 @@ export default function ImageComicGeneratorModal({ open, onClose, nickname, auth
             )}
             {mode === "server" && serverFeatures[feature] && !authHash.trim() && (
               <p className="text-[11px] text-amber-300">
-                「내 자각 실험 결과 보기」에서 닉네임·비밀번호 조회 후 서버 생성을 사용할 수 있습니다.
+                「자각 기록 보기」에서 닉네임·비밀번호 조회 후 서버 생성을 사용할 수 있습니다.
               </p>
             )}
             {mode === "server" && serverFeatures[feature] && (

@@ -251,7 +251,7 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     }
     const fetchMyList = async () => {
       try {
-        // (간이) 내 목록은 우선 공개만 보여주고, "내 자각 실험 결과 보기"에서 비밀번호 확인 후 전체 목록을 봅니다.
+        // (간이) 내 목록은 우선 공개만 보여주고, "자각 기록 보기"에서 비밀번호 확인 후 전체 목록을 봅니다.
         const res = await withTimeout(
           fetch(`/api/feed/awakenings?nickname=${encodeURIComponent(lastRecordNickname.trim())}`),
           12000

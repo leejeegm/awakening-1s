@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import { Volume2, VolumeX, Square, Sparkles } from "lucide-react";
 import ImageComicGeneratorModal from "@/app/components/ImageComicGeneratorModal";
+import PaidImageRequestModal from "@/app/components/PaidImageRequestModal";
 import { sanitizeAiUserText } from "@/lib/aiUserText";
 import {
   PLAN_LABELS,
@@ -40,7 +41,7 @@ type Props = {
   usedToday?: number;
   usedPeriod?: number;
   lastRecordNickname?: string;
-  /** 「내 자각 실험 결과 보기」조회 성공 시 받은 비밀번호 해시(서버 이미지 인증) */
+  /** 「자각 기록 보기」조회 성공 시 받은 비밀번호 해시(서버 이미지 인증) */
   participantAuthHash?: string;
 };
 
@@ -67,6 +68,7 @@ export default function GrowthMessage({
   const [pastError, setPastError] = useState<string | null>(null);
   const [genOpen, setGenOpen] = useState(false);
   const [genBaseText, setGenBaseText] = useState("");
+  const [paidOpen, setPaidOpen] = useState(false);
 
   const speak = useCallback(
     (text: string, opts?: { force?: boolean }) => {
@@ -366,7 +368,7 @@ export default function GrowthMessage({
             }}
             className="mt-2 text-xs text-slate-500 hover:text-slate-300 underline"
           >
-            메세지 보기 (이전 멘트)
+            추천 메세지 보기 (이미지 생성 유료)
           </button>
         </div>
       )}
@@ -377,14 +379,14 @@ export default function GrowthMessage({
           onClick={() => setPastOpen(false)}
           role="dialog"
           aria-modal="true"
-          aria-label="메세지 보기"
+          aria-label="추천 메세지 보기"
         >
           <div
             className="max-h-[90vh] w-[min(96vw,28rem)] min-w-[17rem] min-h-[14rem] max-w-[98vw] overflow-hidden rounded-xl bg-slate-800 border border-slate-600 shadow-xl flex flex-col resize both"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center p-3 border-b border-slate-600">
-              <h3 className="text-[12px] font-medium text-slate-200">메세지 보기</h3>
+              <h3 className="text-[12px] font-medium text-slate-200">추천 메세지 보기</h3>
               <button
                 type="button"
                 onClick={() => setPastOpen(false)}
@@ -462,12 +464,12 @@ export default function GrowthMessage({
                         type="button"
                         onClick={() => {
                           setGenBaseText(typeof item.content === "string" ? sanitizeAiUserText(item.content) : "");
-                          setGenOpen(true);
+                          setPaidOpen(true);
                         }}
                         className="text-[12px] px-2 py-1 rounded bg-deep-violet/50 text-slate-200 hover:bg-deep-violet/70"
-                        title="유료: 기록 기반 이미지·4면 웹툰 생성"
+                        title="유료: 관리자 승인 후 서버 이미지 생성"
                       >
-                        유료 이미지/웹툰
+                        유료 이미지 생성 신청
                       </button>
                     </div>
                   </div>
@@ -476,6 +478,14 @@ export default function GrowthMessage({
           </div>
         </div>
       )}
+
+      <PaidImageRequestModal
+        open={paidOpen}
+        onClose={() => setPaidOpen(false)}
+        nickname={getNickname()}
+        authHash={participantAuthHash}
+        onStartGenerate={() => setGenOpen(true)}
+      />
 
       <ImageComicGeneratorModal
         open={genOpen}

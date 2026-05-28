@@ -105,13 +105,13 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-deep-violet/60 hover:bg-deep-violet text-white font-semibold text-[12px] transition"
       >
         <Lock className="w-4 h-4" />
-        내 자각 실험 결과 보기(닉네임 비번 설정)
+        자각 기록 보기(닉네임 비번 설정)
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
           <div className="bg-slate-900 border border-slate-700 rounded-xl w-[min(96vw,40rem)] min-w-[17rem] min-h-[14rem] max-w-[98vw] max-h-[95vh] overflow-hidden flex flex-col resize both">
             <div className="flex items-center justify-between p-4 border-b border-slate-700">
-              <h3 className="text-[12px] font-bold text-slate-100">내 자각 실험 결과 보기(닉네임 비번 설정)</h3>
+              <h3 className="text-[12px] font-bold text-slate-100">자각 기록 보기(닉네임 비번 설정)</h3>
               <button
                 type="button"
                 onClick={close}

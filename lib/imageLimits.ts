@@ -5,6 +5,25 @@ export type LimitResult =
   | { allowed: true; usedToday: number; dailyLimit: number; usedMonth: number; monthlyLimit: number }
   | { allowed: false; message: string; usedToday: number; dailyLimit: number; usedMonth: number; monthlyLimit: number };
 
+export type ServerImageUsageSnapshot =
+  | {
+      ok: true;
+      usedToday: number;
+      dailyLimit: number;
+      usedMonth: number;
+      monthlyLimit: number;
+      lastUsedAt: string | null;
+    }
+  | {
+      ok: false;
+      message: string;
+      usedToday: number;
+      dailyLimit: number;
+      usedMonth: number;
+      monthlyLimit: number;
+      lastUsedAt: string | null;
+    };
+
 function startOfTodayKSTIso(): string {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -76,7 +95,14 @@ async function loadUsageCounts(nickname: string) {
     .eq("nickname", nickname)
     .gte("created_at", monthStart);
 
-  const countErr = todayRes.error ?? monthRes.error;
+  const lastRes = await admin
+    .from("image_generation_usage")
+    .select("created_at")
+    .eq("nickname", nickname)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  const countErr = todayRes.error ?? monthRes.error ?? lastRes.error;
   if (countErr) {
     const hint = hintFromPgError(countErr.message, countErr.code);
     return {
@@ -86,6 +112,7 @@ async function loadUsageCounts(nickname: string) {
       dailyLimit,
       usedMonth: 0,
       monthlyLimit,
+      lastUsedAt: null,
     };
   }
 
@@ -95,7 +122,45 @@ async function loadUsageCounts(nickname: string) {
     usedMonth: monthRes.count ?? 0,
     dailyLimit,
     monthlyLimit,
+    lastUsedAt:
+      Array.isArray(lastRes.data) && lastRes.data.length > 0
+        ? ((lastRes.data[0] as { created_at?: string | null })?.created_at ?? null)
+        : null,
   };
+}
+
+export async function getServerImageUsageSnapshot(opts: { nickname: string }): Promise<ServerImageUsageSnapshot> {
+  const nickname = (opts.nickname ?? "").trim().toLowerCase();
+  if (!nickname) {
+    return {
+      ok: false,
+      message: "닉네임이 필요합니다.",
+      usedToday: 0,
+      dailyLimit: 0,
+      usedMonth: 0,
+      monthlyLimit: 0,
+      lastUsedAt: null,
+    };
+  }
+  const snap = await loadUsageCounts(nickname);
+  return snap.ok
+    ? {
+        ok: true,
+        usedToday: snap.usedToday,
+        dailyLimit: snap.dailyLimit,
+        usedMonth: snap.usedMonth,
+        monthlyLimit: snap.monthlyLimit,
+        lastUsedAt: snap.lastUsedAt ?? null,
+      }
+    : {
+        ok: false,
+        message: snap.message,
+        usedToday: snap.usedToday,
+        dailyLimit: snap.dailyLimit,
+        usedMonth: snap.usedMonth,
+        monthlyLimit: snap.monthlyLimit,
+        lastUsedAt: snap.lastUsedAt ?? null,
+      };
 }
 
 /** 한도만 확인(기록 없음) — 비동기 작업 생성 시 */

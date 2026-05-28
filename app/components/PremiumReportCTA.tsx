@@ -109,7 +109,7 @@ function buildConfirmSummary(
   latestRequest: RequestItem | null
 ): string {
   if (!authenticated) {
-    return "비밀번호 인증이 필요합니다. 아래 입력란에 닉네임 비밀번호를 입력한 뒤 「인증 후 확인」을 누르거나, 「내 자각 실험 결과 보기」에서 조회를 마친 뒤 「신청 및 결재 확인」을 다시 눌러 주세요.";
+    return "비밀번호 인증이 필요합니다. 아래 입력란에 닉네임 비밀번호를 입력한 뒤 「인증 후 확인」을 누르거나, 「자각 기록 보기」에서 조회를 마친 뒤 「신청 및 결재 확인」을 다시 눌러 주세요.";
   }
   const parts: string[] = ["[인증 완료] 유료 보고서 상태를 확인했습니다."];
   if (eligibility) {
@@ -467,7 +467,7 @@ export default function PremiumReportCTA({
                 유료 보고서 자격과 신청·결재 상태를 확인하려면 닉네임 비밀번호 인증이 필요합니다.
               </p>
               <p className="text-[12px] text-slate-500">
-                「신청 및 결재 확인」을 누르면 인증 안내가 표시됩니다. 「내 자각 실험 결과 보기」에서 조회를 마친 경우에도 아래 입력란에 비밀번호를 입력해 주세요.
+                「신청 및 결재 확인」을 누르면 인증 안내가 표시됩니다. 「자각 기록 보기」에서 조회를 마친 경우에도 아래 입력란에 비밀번호를 입력해 주세요.
               </p>
               <div className="flex flex-wrap gap-2">
                 <input
