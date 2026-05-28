@@ -69,6 +69,10 @@ export default function GrowthMessage({
   const [genOpen, setGenOpen] = useState(false);
   const [genBaseText, setGenBaseText] = useState("");
   const [paidOpen, setPaidOpen] = useState(false);
+  const [selectedPastId, setSelectedPastId] = useState<string | null>(null);
+  const [imageUsageTotal, setImageUsageTotal] = useState<number | null>(null);
+  const [imageUsageLoading, setImageUsageLoading] = useState(false);
+  const [imageUsageError, setImageUsageError] = useState<string | null>(null);
 
   const speak = useCallback(
     (text: string, opts?: { force?: boolean }) => {
@@ -179,11 +183,42 @@ export default function GrowthMessage({
           content: typeof item.content === "string" ? sanitizeAiUserText(item.content) : item.content,
         }))
       );
+      // 기본 선택: 최신 1개
+      const first = (data.items ?? [])[0] as { id?: string; content?: unknown } | undefined;
+      if (first?.id && typeof first.content === "string") {
+        setSelectedPastId(first.id);
+        setGenBaseText(sanitizeAiUserText(first.content));
+      }
     } catch {
       setPastError("네트워크 오류");
       setPastItems([]);
     } finally {
       setPastLoading(false);
+    }
+  }, [getNickname, participantAuthHash]);
+
+  const fetchImageUsageTotal = useCallback(async () => {
+    const nick = getNickname();
+    if (!nick) return;
+    if (!participantAuthHash.trim()) return;
+    setImageUsageLoading(true);
+    setImageUsageError(null);
+    try {
+      const res = await fetch(
+        `/api/image/usage-total?nickname=${encodeURIComponent(nick)}&authHash=${encodeURIComponent(participantAuthHash.trim())}`
+      );
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; usedTotal?: number; error?: string };
+      if (!res.ok || !json.ok) {
+        setImageUsageError(json.error ?? "사용량을 불러오지 못했습니다.");
+        setImageUsageTotal(null);
+        return;
+      }
+      setImageUsageTotal(typeof json.usedTotal === "number" ? json.usedTotal : 0);
+    } catch {
+      setImageUsageError("사용량을 불러오지 못했습니다.");
+      setImageUsageTotal(null);
+    } finally {
+      setImageUsageLoading(false);
     }
   }, [getNickname, participantAuthHash]);
 
@@ -365,6 +400,7 @@ export default function GrowthMessage({
             onClick={() => {
               setPastOpen(true);
               fetchPastMessages();
+              fetchImageUsageTotal();
             }}
             className="mt-2 text-xs text-slate-500 hover:text-slate-300 underline"
           >
@@ -385,16 +421,54 @@ export default function GrowthMessage({
             className="max-h-[90vh] w-[min(96vw,28rem)] min-w-[17rem] min-h-[14rem] max-w-[98vw] overflow-hidden rounded-xl bg-slate-800 border border-slate-600 shadow-xl flex flex-col resize both"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center p-3 border-b border-slate-600">
+            <div className="flex justify-between items-center p-3 border-b border-slate-600 gap-2">
               <h3 className="text-[12px] font-medium text-slate-200">추천 메세지 보기</h3>
-              <button
-                type="button"
-                onClick={() => setPastOpen(false)}
-                className="text-slate-500 hover:text-slate-300 p-1"
-                aria-label="닫기"
-              >
-                ×
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedPastId) return;
+                    // 선택된 추천 메세지로 신청
+                    if (!participantAuthHash.trim()) {
+                      setPastError("자각 기록 보기(닉네임 비번 설정) 에서 자신의 비밀번호 조회 후 이용할 수 있습니다.");
+                      return;
+                    }
+                    setPaidOpen(true);
+                    void fetchImageUsageTotal();
+                  }}
+                  disabled={!selectedPastId}
+                  className="text-[11px] px-2.5 py-1 rounded bg-deep-violet/50 text-slate-200 hover:bg-deep-violet/70 disabled:opacity-50"
+                  title="유료: 관리자 승인 후 서버 이미지 생성"
+                >
+                  유료 이미지 생성 신청
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPastOpen(false)}
+                  className="text-slate-500 hover:text-slate-300 p-1"
+                  aria-label="닫기"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="px-3 pt-3">
+              {imageUsageLoading ? (
+                <p className="text-[11px] text-slate-500">사용량 확인 중…</p>
+              ) : imageUsageError ? (
+                <p className="text-[11px] text-slate-600">{imageUsageError}</p>
+              ) : (
+                <div className="text-[11px] text-slate-500 space-y-1">
+                  <div>
+                    베이직 총 10회 중{" "}
+                    <span className="text-slate-300 font-medium">{imageUsageTotal ?? "-"}</span>회 입니다
+                  </div>
+                  <div>
+                    베스트 총 50회 중{" "}
+                    <span className="text-slate-300 font-medium">{imageUsageTotal ?? "-"}</span>회 입니다
+                  </div>
+                </div>
+              )}
             </div>
             <div className="overflow-y-auto p-3 space-y-3 flex-1">
               {pastLoading && <p className="text-sm text-slate-500">불러오는 중…</p>}
@@ -406,7 +480,16 @@ export default function GrowthMessage({
                 pastItems.map((item) => (
                   <div
                     key={item.id}
-                    className="p-3 rounded-lg bg-slate-700/80 border border-slate-600 text-sm"
+                    className={`p-3 rounded-lg border text-sm cursor-pointer ${
+                      selectedPastId === item.id
+                        ? "bg-slate-700/80 border-deep-violet/60"
+                        : "bg-slate-700/70 border-slate-600 hover:border-slate-500"
+                    }`}
+                    onClick={() => {
+                      setSelectedPastId(item.id);
+                      const text = typeof item.content === "string" ? sanitizeAiUserText(item.content) : "";
+                      setGenBaseText(text);
+                    }}
                   >
                     <div className="flex justify-between items-center gap-2 text-xs text-slate-500 mb-1">
                       <span>
@@ -424,6 +507,15 @@ export default function GrowthMessage({
                       {typeof item.content === "string" ? item.content : JSON.stringify(item.content)}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2 items-center">
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                          selectedPastId === item.id
+                            ? "border-deep-violet/50 bg-deep-violet/20 text-deep-violet"
+                            : "border-slate-600 bg-slate-800/40 text-slate-400"
+                        }`}
+                      >
+                        {selectedPastId === item.id ? "선택됨" : "선택"}
+                      </span>
                       <button
                         type="button"
                         onClick={() => {
@@ -460,17 +552,6 @@ export default function GrowthMessage({
                           aria-label="이전 멘트 음량"
                         />
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setGenBaseText(typeof item.content === "string" ? sanitizeAiUserText(item.content) : "");
-                          setPaidOpen(true);
-                        }}
-                        className="text-[12px] px-2 py-1 rounded bg-deep-violet/50 text-slate-200 hover:bg-deep-violet/70"
-                        title="유료: 관리자 승인 후 서버 이미지 생성"
-                      >
-                        유료 이미지 생성 신청
-                      </button>
                     </div>
                   </div>
                 ))}
