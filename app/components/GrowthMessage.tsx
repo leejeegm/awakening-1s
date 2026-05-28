@@ -469,6 +469,20 @@ export default function GrowthMessage({
                   </div>
                 </div>
               )}
+              <div className="mt-2 rounded-lg bg-slate-900/40 border border-slate-700 px-3 py-2">
+                {selectedPastId ? (
+                  <>
+                    <div className="text-[10px] text-slate-500 mb-1">선택된 추천 메세지</div>
+                    <div className="text-[11px] text-slate-200 leading-relaxed break-words line-clamp-3">
+                      {genBaseText ? sanitizeAiUserText(genBaseText) : "선택된 메세지를 불러오지 못했습니다."}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-[11px] text-slate-500">
+                    아래 리스트에서 생성할 메세지를 선택해 주세요.
+                  </div>
+                )}
+              </div>
             </div>
             <div className="overflow-y-auto p-3 space-y-3 flex-1">
               {pastLoading && <p className="text-sm text-slate-500">불러오는 중…</p>}
