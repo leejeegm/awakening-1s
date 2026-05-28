@@ -334,18 +334,6 @@ export default function RecordModal({
                   ? RESONANCE_NONE_ESSENCE.essence
                   : RESONANCE_ESSENCES.find((e) => e.id === resonanceKind)?.essence}
               </p>
-              {aiPreview &&
-                resonanceKind === aiPreview.id &&
-                !explicitNoneRef.current && (
-                  <p className="mt-1.5 text-xs text-deep-violet/95 leading-relaxed">
-                    AI 추천 ·{" "}
-                    <span className="font-semibold text-violet-200">
-                      {resonanceKindShortLabel(aiPreview.id)}
-                    </span>
-                    {" "}
-                    (자동 선택됨 · 칩을 눌러 변경할 수 있습니다)
-                  </p>
-                )}
             </div>
             <textarea
               placeholder={
@@ -362,40 +350,46 @@ export default function RecordModal({
               className="w-full px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 placeholder-slate-500 focus:border-electric-blue outline-none resize-none text-base touch-manipulation"
             />
             <p className="text-xs text-slate-500">{note.length} / {limit.maxLength}</p>
-            {resonanceKind === RESONANCE_KIND_NONE && (
-              <div className="rounded-lg border border-deep-violet/40 bg-deep-violet/15 px-3.5 py-3 space-y-2">
-                <p className="text-xs font-medium text-slate-400 tracking-wide">
-                  저장 시 AI 추천 예상
-                </p>
-                {aiPreviewLoading ? (
-                  <p className="text-sm text-slate-400">AI 감응 유형 분석 중…</p>
-                ) : aiPreview ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      explicitNoneRef.current = false;
-                      lastAutoAppliedRef.current = aiPreview.id;
-                      setResonanceKind(aiPreview.id);
-                    }}
-                    className="w-full text-left rounded-lg border border-deep-violet/50 bg-slate-900/60 px-3.5 py-2.5 hover:bg-deep-violet/25 transition touch-manipulation"
-                    title="이 유형으로 선택"
-                  >
-                    <span className="block text-base font-semibold text-violet-100 leading-snug">
-                      {resonanceKindShortLabel(aiPreview.id)}
+            {(aiPreviewLoading ||
+              aiPreview ||
+              (note.trim().length >= 4 && resonanceKind === RESONANCE_KIND_NONE)) && (
+              <div className="rounded-lg border border-deep-violet/50 bg-deep-violet/20 px-3 py-2.5 text-[13px] leading-snug">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="text-slate-300 font-medium shrink-0">
+                    저장 시 AI 추천 예상
+                  </span>
+                  {aiPreviewLoading ? (
+                    <span className="text-slate-400">분석 중…</span>
+                  ) : aiPreview ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        explicitNoneRef.current = false;
+                        lastAutoAppliedRef.current = aiPreview.id;
+                        setResonanceKind(aiPreview.id);
+                      }}
+                      className="inline-flex flex-wrap items-baseline gap-x-1 rounded-md px-2 py-0.5 -mx-0.5 border border-violet-400/50 bg-violet-950/70 hover:bg-violet-900/80 transition touch-manipulation"
+                      title="이 유형으로 선택"
+                    >
+                      <span className="font-bold text-white tracking-tight">
+                        {resonanceKindShortLabel(aiPreview.id)}
+                      </span>
+                      <span className="text-slate-300 font-normal">
+                        {resonanceKind === aiPreview.id && !explicitNoneRef.current
+                          ? "(자동 선택됨)"
+                          : "(탭하여 선택)"}
+                      </span>
+                    </button>
+                  ) : note.trim().length >= 4 ? (
+                    <span className="text-slate-400">
+                      분류 어려움 · 미선택으로도 저장됩니다
                     </span>
-                    <span className="block text-xs text-slate-400 mt-1">
-                      탭하여 이 유형으로 선택 · 저장 시에도 추천이 반영됩니다
+                  ) : (
+                    <span className="text-slate-400">
+                      입력 후 추천·자동 선택
                     </span>
-                  </button>
-                ) : note.trim().length >= 4 ? (
-                  <p className="text-sm text-slate-500 leading-relaxed">
-                    맥락이 짧거나 분류가 어렵습니다. 미선택으로도 저장됩니다.
-                  </p>
-                ) : (
-                  <p className="text-sm text-slate-500 leading-relaxed">
-                    내용을 입력하면 AI 추천 유형이 표시·자동 선택됩니다.
-                  </p>
-                )}
+                  )}
+                </div>
               </div>
             )}
             <div className="grid grid-cols-2 gap-2">
