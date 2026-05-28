@@ -8,6 +8,7 @@ import {
   RESONANCE_NONE_ESSENCE,
   type ResonanceKindId,
   type ResonanceKindStored,
+  isResonanceKindId,
   resonanceKindShortLabel,
 } from "@/lib/resonanceEssence";
 
@@ -90,6 +91,10 @@ export default function RecordModal({
   const [aiPreview, setAiPreview] = useState<{ id: ResonanceKindId; label: string } | null>(null);
   const [aiPreviewLoading, setAiPreviewLoading] = useState(false);
   const suggestSeq = useRef(0);
+  /** AI가 마지막으로 자동 선택한 유형 (수동 변경·미선택과 구분) */
+  const lastAutoAppliedRef = useRef<ResonanceKindId | null>(null);
+  /** 사용자가 「미선택」을 눌러 의도적으로 none 저장을 원함 */
+  const explicitNoneRef = useRef(false);
 
   const effectiveNickname = sharedNickname && recordAs === "shared" ? sharedNickname : nickname.trim();
   const showNicknameChoice = !!sharedNickname?.trim();
@@ -98,11 +103,16 @@ export default function RecordModal({
     if (open) {
       setNickname(defaultPersonalNickname ?? "");
       setRecordAs(sharedNickname?.trim() ? "shared" : "personal");
+      setResonanceKind(RESONANCE_KIND_NONE);
+      setAiPreview(null);
+      setAiPreviewLoading(false);
+      lastAutoAppliedRef.current = null;
+      explicitNoneRef.current = false;
     }
   }, [open, defaultPersonalNickname, sharedNickname]);
 
   useEffect(() => {
-    if (!open || resonanceKind !== RESONANCE_KIND_NONE) {
+    if (!open) {
       setAiPreview(null);
       setAiPreviewLoading(false);
       return;
@@ -127,8 +137,24 @@ export default function RecordModal({
           label?: string | null;
         };
         if (seq !== suggestSeq.current) return;
-        if (json.suggested && json.label) {
-          setAiPreview({ id: json.suggested, label: json.label });
+        if (json.suggested && json.label && isResonanceKindId(json.suggested)) {
+          const preview = {
+            id: json.suggested,
+            label: json.label,
+          };
+          setAiPreview(preview);
+          if (!explicitNoneRef.current) {
+            setResonanceKind((current) => {
+              if (
+                current === RESONANCE_KIND_NONE ||
+                current === lastAutoAppliedRef.current
+              ) {
+                lastAutoAppliedRef.current = preview.id;
+                return preview.id;
+              }
+              return current;
+            });
+          }
         } else {
           setAiPreview(null);
         }
@@ -139,9 +165,16 @@ export default function RecordModal({
       }
     }, 700);
     return () => clearTimeout(timer);
-  }, [open, note, duration, resonanceKind]);
+  }, [open, note, duration]);
 
   const limit = LIMITS[duration];
+
+  const resolveKindForSave = (): ResonanceKindStored => {
+    if (resonanceKind !== RESONANCE_KIND_NONE) return resonanceKind;
+    if (explicitNoneRef.current) return RESONANCE_KIND_NONE;
+    if (aiPreview && isResonanceKindId(aiPreview.id)) return aiPreview.id;
+    return RESONANCE_KIND_NONE;
+  };
 
   const submit = async (isPublic: boolean) => {
     const n = effectiveNickname.slice(0, 20);
@@ -150,7 +183,7 @@ export default function RecordModal({
     await onSubmit(n, t, {
       gender: gender === "" ? null : gender,
       ageGroup: ageGroup === "" ? null : ageGroup,
-      resonanceKind,
+      resonanceKind: resolveKindForSave(),
       isPublic,
     });
     setNote("");
@@ -263,7 +296,11 @@ export default function RecordModal({
                 <button
                   type="button"
                   title={RESONANCE_NONE_ESSENCE.essence}
-                  onClick={() => setResonanceKind(RESONANCE_KIND_NONE)}
+                  onClick={() => {
+                    explicitNoneRef.current = true;
+                    lastAutoAppliedRef.current = null;
+                    setResonanceKind(RESONANCE_KIND_NONE);
+                  }}
                   className={`px-2.5 py-1 rounded-full text-[11px] border transition ${
                     resonanceKind === RESONANCE_KIND_NONE
                       ? "bg-slate-600 border-slate-500 text-slate-100"
@@ -277,7 +314,11 @@ export default function RecordModal({
                     key={item.id}
                     type="button"
                     title={item.essence}
-                    onClick={() => setResonanceKind(item.id)}
+                    onClick={() => {
+                      explicitNoneRef.current = false;
+                      lastAutoAppliedRef.current = null;
+                      setResonanceKind(item.id);
+                    }}
                     className={`px-2.5 py-1 rounded-full text-[11px] border transition ${
                       resonanceKind === item.id
                         ? "bg-electric-blue/25 border-electric-blue/60 text-electric-blue"
@@ -293,6 +334,18 @@ export default function RecordModal({
                   ? RESONANCE_NONE_ESSENCE.essence
                   : RESONANCE_ESSENCES.find((e) => e.id === resonanceKind)?.essence}
               </p>
+              {aiPreview &&
+                resonanceKind === aiPreview.id &&
+                !explicitNoneRef.current && (
+                  <p className="mt-1.5 text-xs text-deep-violet/95 leading-relaxed">
+                    AI 추천 ·{" "}
+                    <span className="font-semibold text-violet-200">
+                      {resonanceKindShortLabel(aiPreview.id)}
+                    </span>
+                    {" "}
+                    (자동 선택됨 · 칩을 눌러 변경할 수 있습니다)
+                  </p>
+                )}
             </div>
             <textarea
               placeholder={
@@ -310,25 +363,38 @@ export default function RecordModal({
             />
             <p className="text-xs text-slate-500">{note.length} / {limit.maxLength}</p>
             {resonanceKind === RESONANCE_KIND_NONE && (
-              <div className="rounded-lg border border-deep-violet/30 bg-deep-violet/10 px-3 py-2 min-h-[2.25rem] flex flex-wrap items-center gap-2">
+              <div className="rounded-lg border border-deep-violet/40 bg-deep-violet/15 px-3.5 py-3 space-y-2">
+                <p className="text-xs font-medium text-slate-400 tracking-wide">
+                  저장 시 AI 추천 예상
+                </p>
                 {aiPreviewLoading ? (
-                  <span className="text-[11px] text-slate-500">AI 감응 유형 분석 중…</span>
+                  <p className="text-sm text-slate-400">AI 감응 유형 분석 중…</p>
                 ) : aiPreview ? (
-                  <>
-                    <span className="text-[11px] text-deep-violet/90">저장 시 AI 추천 예상</span>
-                    <button
-                      type="button"
-                      onClick={() => setResonanceKind(aiPreview.id)}
-                      className="text-[11px] px-2 py-0.5 rounded-full bg-deep-violet/25 text-deep-violet border border-deep-violet/40 hover:bg-deep-violet/35"
-                      title="이 유형으로 직접 선택"
-                    >
-                      {aiPreview.label} (탭하여 선택)
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      explicitNoneRef.current = false;
+                      lastAutoAppliedRef.current = aiPreview.id;
+                      setResonanceKind(aiPreview.id);
+                    }}
+                    className="w-full text-left rounded-lg border border-deep-violet/50 bg-slate-900/60 px-3.5 py-2.5 hover:bg-deep-violet/25 transition touch-manipulation"
+                    title="이 유형으로 선택"
+                  >
+                    <span className="block text-base font-semibold text-violet-100 leading-snug">
+                      {resonanceKindShortLabel(aiPreview.id)}
+                    </span>
+                    <span className="block text-xs text-slate-400 mt-1">
+                      탭하여 이 유형으로 선택 · 저장 시에도 추천이 반영됩니다
+                    </span>
+                  </button>
                 ) : note.trim().length >= 4 ? (
-                  <span className="text-[11px] text-slate-600">맥락이 짧거나 분류가 어렵습니다. 미선택으로도 저장됩니다.</span>
+                  <p className="text-sm text-slate-500 leading-relaxed">
+                    맥락이 짧거나 분류가 어렵습니다. 미선택으로도 저장됩니다.
+                  </p>
                 ) : (
-                  <span className="text-[11px] text-slate-600">내용을 입력하면 AI 추천 유형이 표시됩니다.</span>
+                  <p className="text-sm text-slate-500 leading-relaxed">
+                    내용을 입력하면 AI 추천 유형이 표시·자동 선택됩니다.
+                  </p>
                 )}
               </div>
             )}
