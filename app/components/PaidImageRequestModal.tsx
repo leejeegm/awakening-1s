@@ -17,15 +17,8 @@ type AccessResponse = {
   error?: string;
   requiresAuth?: boolean;
   features?: Record<FeatureKey, boolean>;
-  usage?: {
-    ok: true;
-    usedToday: number;
-    dailyLimit: number;
-    usedMonth: number;
-    monthlyLimit: number;
-    lastUsedAt: string | null;
-  } | null;
-  usageError?: string | null;
+  usage?: unknown;
+  usageError?: unknown;
 };
 
 function FeatureRow({
@@ -39,8 +32,11 @@ function FeatureRow({
     <div className="flex items-center justify-between gap-2 rounded-lg bg-slate-900/60 border border-slate-700 px-3 py-2">
       <span className="text-[12px] text-slate-300">{label}</span>
       {enabled ? (
-        <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-          승인됨
+        <span className="text-[11px] text-emerald-200">
+          <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+            승인됨(1회)
+          </span>
+          <span className="ml-2 text-slate-500">- 오류시 재승인 요청</span>
         </span>
       ) : (
         <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-200 border border-amber-500/25">
@@ -80,7 +76,6 @@ export default function PaidImageRequestModal({
   const h = (authHash ?? "").trim();
   const features = data?.features ?? { image_cut: false, comic_4panel: false };
   const anyApproved = !!features.image_cut || !!features.comic_4panel;
-  const usage = data?.usage ?? null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose} role="dialog" aria-modal="true">
@@ -119,22 +114,6 @@ export default function PaidImageRequestModal({
               <div className="space-y-2">
                 <FeatureRow label="한 장 컷(image_cut)" enabled={!!features.image_cut} />
                 <FeatureRow label="4면 웹툰(comic_4panel)" enabled={!!features.comic_4panel} />
-              </div>
-
-              <div className="rounded-lg bg-slate-900/40 border border-slate-700 p-3 space-y-1">
-                <div className="text-[11px] text-slate-500">사용 현황(실시간)</div>
-                {usage ? (
-                  <>
-                    <div className="text-[12px] text-slate-300">
-                      오늘 {usage.usedToday}/{usage.dailyLimit} · 이번 달 {usage.usedMonth}/{usage.monthlyLimit}
-                    </div>
-                    <div className="text-[11px] text-slate-600">
-                      {usage.lastUsedAt ? `마지막 사용: ${new Date(usage.lastUsedAt).toLocaleString("ko-KR")}` : "아직 사용 기록이 없습니다."}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-[12px] text-slate-500">{data?.usageError ?? "사용 현황을 불러오지 못했습니다."}</div>
-                )}
               </div>
 
               {!anyApproved ? (
