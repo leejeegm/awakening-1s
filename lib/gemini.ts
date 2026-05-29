@@ -1,9 +1,13 @@
 import { takeGeminiRateSlot } from "@/lib/geminiRateLimit";
 import { tryConsumeGeminiRateDb } from "@/lib/geminiRateLimitDb";
 
+/** 2.5 Flash thinking 토큰이 maxOutputTokens를 잠식하지 않도록 본문용 기본 상한 */
+const GEMINI_TEXT_DEFAULT_MAX_OUTPUT = 512;
+const GEMINI_TEXT_MAX_OUTPUT_CAP = 8192;
+
 export type GeminiGenerateArgs = {
   prompt: string;
-  /** 짧은 출력이 목적이라 기본 256 */
+  /** 본문 생성 기본 512 (2.5 Flash thinking 예산 분리) */
   maxOutputTokens?: number;
   /** 닉네임·IP 등 — 서버 인스턴스별 호출 상한(베스트 에포트) */
   rateLimitKey?: string;
@@ -21,6 +25,18 @@ export type GeminiOk = { ok: true; text: string; model: string };
 export type GeminiErr = { ok: false; error: string; status?: number; failureKind: GeminiFailureKind };
 
 export type GeminiResult = GeminiOk | GeminiErr;
+
+function resolveGeminiModel(): string {
+  return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+}
+
+/** 2.5 Flash: thinkingBudget 0 — thinking이 출력 한도를 잠식하는 문제 방지 */
+function buildGeminiThinkingConfig(model: string): { thinkingBudget: number } | undefined {
+  const m = model.toLowerCase();
+  if (/gemini-2\.5-pro/.test(m)) return { thinkingBudget: 128 };
+  if (/gemini-2\.5.*flash/.test(m)) return { thinkingBudget: 0 };
+  return undefined;
+}
 
 function classifyGeminiHttpError(status: number, body: string): GeminiFailureKind {
   const b = body.toLowerCase();
@@ -59,8 +75,21 @@ export async function geminiGenerateText(args: GeminiGenerateArgs): Promise<Gemi
     }
   }
 
-  const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+  const model = resolveGeminiModel();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const thinkingConfig = buildGeminiThinkingConfig(model);
+  const maxOutputTokens = Math.max(
+    32,
+    Math.min(
+      GEMINI_TEXT_MAX_OUTPUT_CAP,
+      Math.floor(args.maxOutputTokens ?? GEMINI_TEXT_DEFAULT_MAX_OUTPUT)
+    )
+  );
+  const generationConfig: Record<string, unknown> = {
+    maxOutputTokens,
+    temperature: 0.7,
+  };
+  if (thinkingConfig) generationConfig.thinkingConfig = thinkingConfig;
 
   try {
     const res = await fetch(url, {
@@ -68,10 +97,7 @@ export async function geminiGenerateText(args: GeminiGenerateArgs): Promise<Gemi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: args.prompt }] }],
-        generationConfig: {
-          maxOutputTokens: Math.max(32, Math.min(1024, Math.floor(args.maxOutputTokens ?? 256))),
-          temperature: 0.7,
-        },
+        generationConfig,
       }),
     });
 

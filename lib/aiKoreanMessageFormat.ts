@@ -44,17 +44,7 @@ function truncateAiKorean(text: string, max: number): string {
   return slice.trim();
 }
 
-function padSoftMin(text: string, min: number, max: number): string {
-  const suffixes = [" 오늘의 마음, 충분히 응원해요.", " 당신의 걸음을 믿어요."];
-  let t = sanitizeAiUserText(text);
-  for (const s of suffixes) {
-    if (aiKoreanCharCount(t) >= min) break;
-    if (aiKoreanCharCount(t) + aiKoreanCharCount(s) <= max) t = `${t}${s}`;
-  }
-  return truncateAiKorean(t, max);
-}
-
-/** AI·룰 결과를 100자 이내로 맞춤 */
+/** AI·룰 결과를 100자 이내로 맞춤 (짧은 AI 출력에 고정 접미사를 붙이지 않음) */
 export function finalizeAiKoreanMessage(primary: string, ...fallbacks: string[]): string {
   const max = AI_KOREAN_MAX_LEN;
   const min = AI_KOREAN_SOFT_MIN_LEN;
@@ -62,18 +52,21 @@ export function finalizeAiKoreanMessage(primary: string, ...fallbacks: string[])
 
   for (const raw of candidates) {
     const len = aiKoreanCharCount(raw);
-    if (len > 0 && len <= max) {
-      if (len >= min) return raw;
-      const padded = padSoftMin(raw, min, max);
-      if (aiKoreanCharCount(padded) <= max) return padded;
-    }
+    if (len >= min && len <= max) return raw;
     if (len > max) {
       const cut = truncateAiKorean(raw, max);
-      if (aiKoreanCharCount(cut) >= min || aiKoreanCharCount(cut) > 0) return cut;
+      if (aiKoreanCharCount(cut) >= min) return cut;
     }
   }
 
+  let best = "";
+  for (const raw of candidates) {
+    const t = aiKoreanCharCount(raw) <= max ? raw : truncateAiKorean(raw, max);
+    if (aiKoreanCharCount(t) > aiKoreanCharCount(best)) best = t;
+  }
+  if (best) return best;
+
   const fallback =
     "오늘 남긴 마음이 고스란히 전해져요. 스스로를 다정히 바라보는 당신에게, 조용한 응원을 보냅니다.";
-  return truncateAiKorean(padSoftMin(fallback, min, max), max);
+  return truncateAiKorean(fallback, max);
 }

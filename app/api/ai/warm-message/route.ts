@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
     const geminiPrompt = `${buildWarmMessageGeminiSystemPreamble()}\n\n${prompt}`;
     const g1 = await geminiGenerateText({
       prompt: geminiPrompt,
-      maxOutputTokens: 180,
+      maxOutputTokens: 512,
       rateLimitKey: `warm:${nickname}`,
     });
     const ruleMessage = ruleBased();
@@ -244,7 +244,7 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     const g1 = await geminiGenerateText({
       prompt: `${buildWarmMessageGeminiSystemPreamble()}\n\n${prompt}`,
-      maxOutputTokens: 180,
+      maxOutputTokens: 512,
       rateLimitKey: `warm:${nickname}`,
     });
     const ruleMessage = ruleBased();

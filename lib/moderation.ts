@@ -85,7 +85,7 @@ async function geminiClassify(note: string, rateLimitKey: string): Promise<Moder
     "텍스트:\n" +
     note.slice(0, 300);
 
-  const g = await geminiGenerateText({ prompt, maxOutputTokens: 180, rateLimitKey: `mod:${rateLimitKey}` });
+  const g = await geminiGenerateText({ prompt, maxOutputTokens: 256, rateLimitKey: `mod:${rateLimitKey}` });
   if (!g.ok) return null;
   return parseModerationJson(g.text);
 }

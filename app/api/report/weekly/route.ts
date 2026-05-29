@@ -70,7 +70,7 @@ ${text}`;
 
   const g1 = await geminiGenerateText({
     prompt: geminiPrompt,
-    maxOutputTokens: 150,
+    maxOutputTokens: 512,
     rateLimitKey: `weekly:${nickname}`,
   });
 

@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
   try {
     const g1 = await geminiGenerateText({
       prompt: geminiPrompt,
-      maxOutputTokens: 150,
+      maxOutputTokens: 512,
       rateLimitKey: `insight:${nickname || "trend"}`,
     });
 
@@ -236,7 +236,7 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     const g1 = await geminiGenerateText({
       prompt: geminiPrompt,
-      maxOutputTokens: 150,
+      maxOutputTokens: 512,
       rateLimitKey: `insight:${nickname || "trend"}`,
     });
     const ruleCard = ruleBased();
