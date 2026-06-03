@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await admin
     .from("premium_report_requests")
-    .select("id, status, payment_status, downloadable, requested_at, updated_at, product_id")
+    .select("id, status, payment_status, downloadable, requested_at, updated_at, product_id, expires_at")
     .eq("nickname", nickname)
     .order("requested_at", { ascending: false });
 
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
 
   const { data: existing } = await admin
     .from("premium_report_requests")
-    .select("id, status, payment_status, downloadable")
+    .select("id, status, payment_status, downloadable, expires_at")
     .eq("nickname", nickname)
     .in("status", ["requested", "paid_pending", "approved", "in_progress", "ready"] as never)
     .order("requested_at", { ascending: false })
@@ -115,13 +115,28 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (existing) {
-    return NextResponse.json({
-      ok: true,
-      requestId: (existing as { id: string }).id,
-      status: (existing as { status: string }).status,
-      paymentStatus: (existing as { payment_status: string }).payment_status,
-      alreadyExists: true,
-    });
+    const row = existing as {
+      id: string;
+      status: string;
+      payment_status: string;
+      expires_at: string | null;
+    };
+    const periodEnded =
+      !!row.expires_at && new Date(row.expires_at).getTime() <= Date.now();
+    if (row.status === "ready" && periodEnded) {
+      await admin
+        .from("premium_report_requests")
+        .update({ status: "expired", downloadable: false } as never)
+        .eq("id", row.id);
+    } else {
+      return NextResponse.json({
+        ok: true,
+        requestId: row.id,
+        status: row.status,
+        paymentStatus: row.payment_status,
+        alreadyExists: true,
+      });
+    }
   }
 
   const { data: inserted, error } = await admin

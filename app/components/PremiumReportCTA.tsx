@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { getParticipantAuthHash } from "@/lib/participantAuthStorage";
+import {
+  formatPremiumReportDownloadCountLabel,
+  getPremiumReportDownloadCount,
+  incrementPremiumReportDownloadCount,
+} from "@/lib/premiumReportDownloadTracking";
 
 type EligibilityResponse = {
   qualifies: boolean;
@@ -30,6 +35,7 @@ type RequestItem = {
   downloadable: boolean;
   requested_at: string;
   updated_at: string;
+  expires_at?: string | null;
 };
 
 type Props = {
@@ -160,6 +166,8 @@ export default function PremiumReportCTA({
   const [requestError, setRequestError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const [downloadCount, setDownloadCount] = useState(0);
+  const [downloadBusy, setDownloadBusy] = useState(false);
 
   const trimmedNickname = nickname.trim();
   const isAuthenticated = !!participantAuthHash.trim();
@@ -170,6 +178,36 @@ export default function PremiumReportCTA({
     latestRequest.status !== "expired";
   const canSubmitNewRequest = !!eligibility?.qualifies && !hasActiveRequest;
   const isChecking = eligibilityLoading || requestsLoading;
+
+  const downloadPeriodEnded = useMemo(() => {
+    const exp = latestRequest?.expires_at;
+    if (!exp) return false;
+    return new Date(exp).getTime() <= Date.now();
+  }, [latestRequest?.expires_at]);
+
+  const canDownloadNow =
+    latestRequest?.status === "ready" &&
+    !!latestRequest.downloadable &&
+    !downloadPeriodEnded &&
+    downloadCount === 0;
+
+  const showPostDownloadReapply =
+    latestRequest?.status === "ready" && downloadCount > 0;
+
+  const canReapplyAfterDownloadPeriod =
+    !!eligibility?.qualifies && showPostDownloadReapply && downloadPeriodEnded;
+
+  /** 다운로드 완료 후에는 상단 신청 버튼 대신 하단 재신청 버튼만 사용 */
+  const hideDefaultApplyWhilePostDownload =
+    showPostDownloadReapply && latestRequest?.status === "ready";
+
+  useEffect(() => {
+    if (!trimmedNickname || !latestRequest?.id) {
+      setDownloadCount(0);
+      return;
+    }
+    setDownloadCount(getPremiumReportDownloadCount(trimmedNickname, latestRequest.id));
+  }, [trimmedNickname, latestRequest?.id]);
 
   const applyBlockReason = (() => {
     if (!eligibility) return "먼저 「신청 및 결재 확인」을 눌러 자격을 확인해 주세요.";
@@ -391,11 +429,45 @@ export default function PremiumReportCTA({
     }
   };
 
-  const handleDownload = () => {
-    if (!latestRequest || !participantAuthHash) return;
-    window.location.href = `/api/premium-report/download?id=${encodeURIComponent(latestRequest.id)}&nickname=${encodeURIComponent(
-      trimmedNickname
-    )}&authHash=${encodeURIComponent(participantAuthHash)}`;
+  const handleDownload = async () => {
+    if (!latestRequest || !participantAuthHash || downloadBusy) return;
+    setDownloadBusy(true);
+    setRequestError("");
+    try {
+      const url = `/api/premium-report/download?id=${encodeURIComponent(latestRequest.id)}&nickname=${encodeURIComponent(
+        trimmedNickname
+      )}&authHash=${encodeURIComponent(participantAuthHash)}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        const msg = json.error ?? "다운로드에 실패했습니다.";
+        setRequestError(msg);
+        setStatusMessage(`[다운로드 실패] ${msg}`);
+        return;
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = `jakkae-premium-report-${trimmedNickname}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+
+      const count = incrementPremiumReportDownloadCount(trimmedNickname, latestRequest.id);
+      setDownloadCount(count);
+      const label = formatPremiumReportDownloadCountLabel(count);
+      setStatusMessage(
+        `[다운로드 완료] ${label} 다운로드 기간이 끝나면 「유료 보고서 신청하기」가 다시 활성화됩니다.`
+      );
+    } catch {
+      const msg = "네트워크 오류로 다운로드하지 못했습니다.";
+      setRequestError(msg);
+      setStatusMessage(`[다운로드 실패] ${msg}`);
+    } finally {
+      setDownloadBusy(false);
+    }
   };
 
   const buttonClass = useMemo(() => {
@@ -567,6 +639,50 @@ export default function PremiumReportCTA({
                     이전 신청이 {latestRequest.status === "rejected" ? "반려" : "만료"}되어 다시 신청할 수 있습니다.
                   </p>
                 )}
+                {!hideDefaultApplyWhilePostDownload && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!eligibility) {
+                        void handleConfirmClick();
+                        return;
+                      }
+                      if (!canSubmitNewRequest) return;
+                      void submitRequest();
+                    }}
+                    disabled={requestBusy || (!!eligibility && !canSubmitNewRequest)}
+                    className="w-full px-3 py-2 rounded-lg bg-deep-violet/80 text-white text-[12px] font-medium hover:bg-deep-violet disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {requestBusy
+                      ? "신청 중..."
+                      : !eligibility
+                        ? "자격 확인 후 신청하기"
+                        : latestRequest &&
+                            (latestRequest.status === "rejected" || latestRequest.status === "expired")
+                          ? "유료 보고서 다시 신청하기"
+                          : "유료 보고서 신청하기"}
+                  </button>
+                )}
+              </div>
+
+              {showPostDownloadReapply && (
+                <p className="text-[12px] text-emerald-400/90 text-center">
+                  {formatPremiumReportDownloadCountLabel(downloadCount)}
+                </p>
+              )}
+
+              {canDownloadNow && (
+                <button
+                  type="button"
+                  onClick={() => void handleDownload()}
+                  disabled={downloadBusy}
+                  className="w-full px-3 py-2 rounded-lg bg-electric-blue/80 text-white text-[12px] font-medium hover:bg-electric-blue disabled:opacity-50"
+                >
+                  {downloadBusy ? "다운로드 중..." : "나의 자깨 감응 보고서 다운로드"}
+                </button>
+              )}
+
+              {showPostDownloadReapply && (
                 <button
                   type="button"
                   onClick={() => {
@@ -574,29 +690,19 @@ export default function PremiumReportCTA({
                       void handleConfirmClick();
                       return;
                     }
-                    if (!canSubmitNewRequest) return;
+                    if (!canReapplyAfterDownloadPeriod) return;
                     void submitRequest();
                   }}
-                  disabled={requestBusy || (!!eligibility && !canSubmitNewRequest)}
+                  disabled={
+                    requestBusy ||
+                    downloadBusy ||
+                    (!!eligibility && !canReapplyAfterDownloadPeriod)
+                  }
                   className="w-full px-3 py-2 rounded-lg bg-deep-violet/80 text-white text-[12px] font-medium hover:bg-deep-violet disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {requestBusy
                     ? "신청 중..."
-                    : !eligibility
-                      ? "자격 확인 후 신청하기"
-                      : latestRequest && (latestRequest.status === "rejected" || latestRequest.status === "expired")
-                        ? "유료 보고서 다시 신청하기"
-                        : "유료 보고서 신청하기"}
-                </button>
-              </div>
-
-              {latestRequest?.status === "ready" && latestRequest.downloadable && (
-                <button
-                  type="button"
-                  onClick={handleDownload}
-                  className="w-full px-3 py-2 rounded-lg bg-electric-blue/80 text-white text-[12px] font-medium hover:bg-electric-blue"
-                >
-                  나의 자깨 감응 보고서 다운로드
+                    : "유료 보고서 신청하기(다운로드 기간 종료시 활성됨)"}
                 </button>
               )}
             </div>
