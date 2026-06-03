@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
+import { archiveSharedExperimentRecords } from "@/lib/experimentSharedRecords";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 function sha256Hex(text: string): string {
@@ -51,5 +52,15 @@ export async function POST(request: NextRequest) {
   if (updateError) {
     return NextResponse.json({ error: "실험 종료 처리에 실패했습니다." }, { status: 500 });
   }
-  return NextResponse.json({ ok: true });
+
+  const archived = await archiveSharedExperimentRecords(admin, nickname);
+  if (archived.error) {
+    console.error("[experiment/end] archive shared records", archived.error);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    archivedSharedRecords: archived.archived,
+    archiveWarning: archived.error,
+  });
 }

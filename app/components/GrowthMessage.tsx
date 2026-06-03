@@ -41,6 +41,7 @@ type Props = {
   usedToday?: number;
   usedPeriod?: number;
   lastRecordNickname?: string;
+  sharedNickname?: string | null;
   /** 「자각 기록 보기」조회 성공 시 받은 비밀번호 해시(서버 이미지 인증) */
   participantAuthHash?: string;
 };
@@ -50,6 +51,7 @@ export default function GrowthMessage({
   usedToday = 0,
   usedPeriod,
   lastRecordNickname = "",
+  sharedNickname = null,
   participantAuthHash = "",
 }: Props) {
   const prevUsedTodayRef = useRef<number | undefined>(undefined);
@@ -149,9 +151,12 @@ export default function GrowthMessage({
     }
   }, [lastRecordNickname, warmDuration, participantAuthHash]);
 
-  const getNickname = useCallback(() => {
+  const getPersonalNickname = useCallback(() => {
     return (lastRecordNickname || "").trim() || (typeof window !== "undefined" ? localStorage.getItem("lastRecordNickname") ?? "" : "").trim();
   }, [lastRecordNickname]);
+
+  /** 유료 승인·AI·이미지는 개인 닉네임 기준 (공동 닉네임과 분리) */
+  const getNickname = getPersonalNickname;
 
   const fetchPastMessages = useCallback(async () => {
     const nick = getNickname();
@@ -577,7 +582,8 @@ export default function GrowthMessage({
       <PaidImageRequestModal
         open={paidOpen}
         onClose={() => setPaidOpen(false)}
-        nickname={getNickname()}
+        nickname={getPersonalNickname()}
+        sharedNickname={sharedNickname}
         authHash={participantAuthHash}
         onStartGenerate={() => setGenOpen(true)}
       />

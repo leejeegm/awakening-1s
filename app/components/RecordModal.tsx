@@ -64,6 +64,7 @@ type Props = {
       ageGroup?: AgeGroupType | null;
       resonanceKind?: ResonanceKindStored;
       isPublic?: boolean;
+      recordScope?: "personal" | "shared";
     }
   ) => Promise<void>;
   submitStatus: "idle" | "loading" | "done" | "error";
@@ -185,6 +186,7 @@ export default function RecordModal({
       ageGroup: ageGroup === "" ? null : ageGroup,
       resonanceKind: resolveKindForSave(),
       isPublic,
+      recordScope: showNicknameChoice ? recordAs : "personal",
     });
     setNote("");
     if (submitStatus === "done") onClose();
@@ -250,6 +252,23 @@ export default function RecordModal({
                 {recordAs === "personal" && !nickname.trim() && (
                   <p className="text-xs text-slate-500">개인 닉네임을 입력하세요.</p>
                 )}
+                <p className="text-xs text-slate-400 leading-relaxed rounded-lg bg-slate-800/80 border border-slate-700/80 px-3 py-2">
+                  {recordAs === "shared" ? (
+                    <>
+                      <span className="text-violet-200 font-medium">공동 저장</span>
+                      {" · "}
+                      <span className="text-slate-300">{sharedNickname}</span>
+                      {" "}닉네임에만 저장됩니다. 개인 닉네임 기록은 그대로 유지됩니다.
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-electric-blue font-medium">개인 저장</span>
+                      {" · "}
+                      <span className="text-slate-300">{nickname.trim() || defaultPersonalNickname || "개인 닉네임"}</span>
+                      {" "}에 저장됩니다.
+                    </>
+                  )}
+                </p>
               </div>
             ) : (
               <input

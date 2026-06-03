@@ -667,6 +667,51 @@ export interface Database {
         };
         Relationships: [];
       };
+      image_entitlement_requests: {
+        Row: {
+          id: string;
+          nickname: string;
+          feature_key: "image_cut" | "comic_4panel";
+          status: "pending" | "approved" | "rejected" | "cancelled";
+          payment_status: "unpaid" | "paid" | "waived";
+          requested_at: string;
+          payment_confirmed_at: string | null;
+          payment_note: string | null;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          admin_note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          nickname: string;
+          feature_key: "image_cut" | "comic_4panel";
+          status?: "pending" | "approved" | "rejected" | "cancelled";
+          payment_status?: "unpaid" | "paid" | "waived";
+          requested_at?: string;
+          payment_confirmed_at?: string | null;
+          payment_note?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          admin_note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          nickname?: string;
+          feature_key?: "image_cut" | "comic_4panel";
+          status?: "pending" | "approved" | "rejected" | "cancelled";
+          payment_status?: "unpaid" | "paid" | "waived";
+          requested_at?: string;
+          payment_confirmed_at?: string | null;
+          payment_note?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          admin_note?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {

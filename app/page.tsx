@@ -46,6 +46,12 @@ import type { DurationType, GenderType, AgeGroupType } from "./components/Record
 import { RESONANCE_KIND_NONE, type ResonanceKindStored } from "@/lib/resonanceEssence";
 import SectionErrorBoundary from "./components/SectionErrorBoundary";
 import { checkRecordLimit, type PlanType } from "@/lib/planLimits";
+import {
+  clearStoredSharedNickname,
+  isSharedScopeRecord,
+  readStoredSharedNickname,
+  writeStoredSharedNickname,
+} from "@/lib/resonanceSharedNickname";
 
 const STORAGE_KEY = "awakening_attempts";
 const NICKNAME_KEY = "lastRecordNickname";
@@ -98,8 +104,17 @@ export default function Home() {
   }>({ planType: "free", usedToday: 0 });
   const [sectionKeys, setSectionKeys] = useState({ gauge: 0, points: 0, wordcloud: 0, timeline: 0, insight: 0, charts: 0, report: 0 });
   const [experimentEnded, setExperimentEnded] = useState(false);
-  const [sharedNickname, setSharedNickname] = useState<string | null>(null);
+  const [sharedNickname, setSharedNicknameState] = useState<string | null>(() =>
+    typeof window !== "undefined" ? readStoredSharedNickname() : null
+  );
   const [participantAuthHash, setParticipantAuthHash] = useState("");
+
+  const setSharedNickname = useCallback((nick: string | null) => {
+    const trimmed = nick?.trim().slice(0, 20) || null;
+    setSharedNicknameState(trimmed);
+    if (trimmed) writeStoredSharedNickname(trimmed);
+    else clearStoredSharedNickname();
+  }, []);
 
   useEffect(() => {
     setAttempts(getStoredAttempts());
@@ -128,7 +143,8 @@ export default function Home() {
 
   const onExperimentEnded = useCallback(() => {
     setExperimentEnded(true);
-  }, []);
+    setSharedNickname(null);
+  }, [setSharedNickname]);
 
   useEffect(() => {
     let cancelled = false;
@@ -252,11 +268,13 @@ export default function Home() {
       ageGroup?: AgeGroupType | null;
       resonanceKind?: ResonanceKindStored;
       isPublic?: boolean;
+      recordScope?: "personal" | "shared";
     }
   ) => {
     const n = nickname.trim().slice(0, 20);
     const t = note.trim();
     if (!n || !t) return;
+    const isSharedRecord = isSharedScopeRecord(opts?.recordScope, n, sharedNickname);
     setSubmitError(null);
     setRecordSuccessHint(null);
     const client = supabase;
@@ -327,16 +345,20 @@ export default function Home() {
     setSubmitStatus("done");
     setRecordModalOpen(false);
     setSubmitStatus("idle");
-    setMyRecordCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
-    setPlanInfo((prev) => ({
-      ...prev,
-      usedToday: prev.usedToday + 1,
-      usedPeriod: prev.usedPeriod != null ? prev.usedPeriod + 1 : undefined,
-    }));
-    try {
-      localStorage.setItem(NICKNAME_KEY, n);
-      setLastRecordNickname(n);
-    } catch {}
+    if (!isSharedRecord) {
+      setMyRecordCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
+      setPlanInfo((prev) => ({
+        ...prev,
+        usedToday: prev.usedToday + 1,
+        usedPeriod: prev.usedPeriod != null ? prev.usedPeriod + 1 : undefined,
+      }));
+      try {
+        localStorage.setItem(NICKNAME_KEY, n);
+        setLastRecordNickname(n);
+      } catch {}
+    } else {
+      setTotalRecords((prev) => (typeof prev === "number" ? prev + 1 : 1));
+    }
   };
 
   if (experimentEnded) {
@@ -482,6 +504,7 @@ export default function Home() {
           usedToday={planInfo.usedToday}
           usedPeriod={planInfo.usedPeriod}
           lastRecordNickname={lastRecordNickname}
+          sharedNickname={sharedNickname}
           participantAuthHash={participantAuthHash}
         />
       </section>

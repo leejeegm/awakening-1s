@@ -101,7 +101,11 @@ export async function POST(request: NextRequest) {
 
   clearParticipantVerifyFailures(ip, nickname);
 
-  let recordsQuery = admin.from("awakenings").select("*").eq("nickname", nickname);
+  let recordsQuery = admin
+    .from("awakenings")
+    .select("*")
+    .eq("nickname", nickname)
+    .eq("moderation_state", "ok");
   if (scope === "private") {
     recordsQuery = recordsQuery.eq("is_public", false);
   } else if (scope === "public") {

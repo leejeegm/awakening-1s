@@ -55,6 +55,20 @@ type EntitlementActionRow = {
   enabled_by: string | null;
 };
 
+type ImageEntitlementRequestRow = {
+  id: string;
+  nickname: string;
+  feature_key: "image_cut" | "comic_4panel";
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  payment_status: "unpaid" | "paid" | "waived";
+  requested_at: string;
+  payment_confirmed_at: string | null;
+  payment_note: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  admin_note: string | null;
+};
+
 type ImageUsageRow = {
   id: string;
   created_at: string;
@@ -610,6 +624,11 @@ export default function AdminPage() {
   const [entRows, setEntRows] = useState<EntitlementRow[]>([]);
   const [entError, setEntError] = useState<string>("");
   const [entExpiresDate, setEntExpiresDate] = useState<string>("");
+  const [imgReqItems, setImgReqItems] = useState<ImageEntitlementRequestRow[]>([]);
+  const [imgReqLoading, setImgReqLoading] = useState(false);
+  const [imgReqError, setImgReqError] = useState("");
+  const [imgReqFilter, setImgReqFilter] = useState<"pending" | "all">("pending");
+  const [imgReqActionId, setImgReqActionId] = useState<string | null>(null);
   const [auditNick, setAuditNick] = useState("");
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState("");
@@ -1519,6 +1538,58 @@ export default function AdminPage() {
     [entNick, entExpiresDate, loadEntitlements]
   );
 
+  const loadImageEntitlementRequests = useCallback(async () => {
+    setImgReqLoading(true);
+    setImgReqError("");
+    try {
+      const res = await fetch(
+        `/api/admin/image-entitlement-requests?status=${encodeURIComponent(imgReqFilter)}&limit=80`
+      );
+      const json = (await res.json().catch(() => ({}))) as {
+        items?: ImageEntitlementRequestRow[];
+        error?: string;
+        hint?: string;
+      };
+      if (!res.ok) {
+        setImgReqError([json.error, json.hint].filter(Boolean).join("\n") || "목록 불러오기 실패");
+        setImgReqItems([]);
+        return;
+      }
+      setImgReqItems(Array.isArray(json.items) ? json.items : []);
+    } catch {
+      setImgReqError("네트워크 오류");
+      setImgReqItems([]);
+    } finally {
+      setImgReqLoading(false);
+    }
+  }, [imgReqFilter]);
+
+  const patchImageEntitlementRequest = useCallback(
+    async (id: string, action: "mark_paid" | "waive_payment" | "approve" | "reject") => {
+      setImgReqActionId(id);
+      setImgReqError("");
+      try {
+        const res = await fetch(`/api/admin/image-entitlement-requests/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (!res.ok || !json.ok) {
+          setImgReqError(json.error ?? "처리 실패");
+          return;
+        }
+        await loadImageEntitlementRequests();
+        if (entNick.trim()) await loadEntitlements();
+      } catch {
+        setImgReqError("네트워크 오류");
+      } finally {
+        setImgReqActionId(null);
+      }
+    },
+    [loadImageEntitlementRequests, entNick, loadEntitlements]
+  );
+
   const loadModerationArchive = useCallback(async () => {
     setMqLoading(true);
     try {
@@ -1553,14 +1624,14 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (loggedIn === true && tab === "entitlements") {
-      // 탭 진입 시 기존 입력값이 있으면 자동 조회
+      void loadImageEntitlementRequests();
       if (entNick.trim()) loadEntitlements();
       else {
         setEntRows([]);
         setEntError("");
       }
     }
-  }, [loggedIn, tab, entNick, loadEntitlements]);
+  }, [loggedIn, tab, entNick, imgReqFilter, loadEntitlements, loadImageEntitlementRequests]);
 
   useEffect(() => {
     if (loggedIn === true && tab === "moderation_quarantine") loadModerationArchive();
@@ -2012,6 +2083,143 @@ export default function AdminPage() {
         )}
         {tab === "entitlements" && (
           <>
+            <p className="text-xs text-slate-500 mb-3">
+              사용자가 앱에서 보낸 유료 이미지 승인 요청을 확인·결제 확인·승인합니다. 수동 토글도 그대로 사용할 수 있습니다.
+            </p>
+
+            <div className="mb-4 p-3 rounded-lg bg-slate-800/60 border border-violet-500/30 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-medium text-slate-200">승인 요청 목록</h4>
+                <select
+                  value={imgReqFilter}
+                  onChange={(e) => setImgReqFilter(e.target.value as "pending" | "all")}
+                  className="text-xs rounded bg-slate-900 border border-slate-600 text-slate-200 px-2 py-1"
+                >
+                  <option value="pending">대기 중만</option>
+                  <option value="all">전체</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void loadImageEntitlementRequests()}
+                  disabled={imgReqLoading}
+                  className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-200 hover:bg-slate-600 disabled:opacity-50"
+                >
+                  {imgReqLoading ? "새로고침…" : "새로고침"}
+                </button>
+              </div>
+              {imgReqError && <p className="text-xs text-red-400 whitespace-pre-wrap">{imgReqError}</p>}
+              {imgReqLoading && imgReqItems.length === 0 ? (
+                <p className="text-xs text-slate-500">불러오는 중…</p>
+              ) : imgReqItems.length === 0 ? (
+                <p className="text-xs text-slate-500">표시할 요청이 없습니다.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[11px] text-slate-300 border-collapse">
+                    <thead>
+                      <tr className="text-slate-500 border-b border-slate-700">
+                        <th className="py-2 pr-2">닉네임</th>
+                        <th className="py-2 pr-2">기능</th>
+                        <th className="py-2 pr-2">요청 일시</th>
+                        <th className="py-2 pr-2">결제</th>
+                        <th className="py-2 pr-2">상태</th>
+                        <th className="py-2">처리</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {imgReqItems.map((row) => {
+                        const busy = imgReqActionId === row.id;
+                        const featureLabel =
+                          row.feature_key === "image_cut" ? "한 장 컷" : "4면 웹툰";
+                        const payLabel =
+                          row.payment_status === "paid"
+                            ? "결제완료"
+                            : row.payment_status === "waived"
+                              ? "면제"
+                              : "미결제";
+                        return (
+                          <tr key={row.id} className="border-b border-slate-800/80 align-top">
+                            <td className="py-2 pr-2 font-mono text-slate-200">
+                              <button
+                                type="button"
+                                onClick={() => setEntNick(row.nickname)}
+                                className="hover:text-electric-blue underline-offset-2 hover:underline"
+                                title="아래 수동 승인란에 닉네임 채우기"
+                              >
+                                {row.nickname}
+                              </button>
+                            </td>
+                            <td className="py-2 pr-2">{featureLabel}</td>
+                            <td className="py-2 pr-2 whitespace-nowrap">
+                              {new Date(row.requested_at).toLocaleString("ko-KR")}
+                            </td>
+                            <td className="py-2 pr-2">
+                              <span
+                                className={
+                                  row.payment_status === "unpaid"
+                                    ? "text-amber-300"
+                                    : "text-emerald-300"
+                                }
+                              >
+                                {payLabel}
+                              </span>
+                            </td>
+                            <td className="py-2 pr-2">{row.status}</td>
+                            <td className="py-2">
+                              {row.status === "pending" ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {row.payment_status === "unpaid" && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={() => void patchImageEntitlementRequest(row.id, "mark_paid")}
+                                        className="px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-200 border border-emerald-700/40 disabled:opacity-50"
+                                      >
+                                        결제 확인
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={() => void patchImageEntitlementRequest(row.id, "waive_payment")}
+                                        className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 border border-slate-600 disabled:opacity-50"
+                                      >
+                                        면제
+                                      </button>
+                                    </>
+                                  )}
+                                  <button
+                                    type="button"
+                                    disabled={busy || row.payment_status === "unpaid"}
+                                    onClick={() => void patchImageEntitlementRequest(row.id, "approve")}
+                                    className="px-1.5 py-0.5 rounded bg-electric-blue/25 text-electric-blue border border-electric-blue/40 disabled:opacity-50"
+                                  >
+                                    승인
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => void patchImageEntitlementRequest(row.id, "reject")}
+                                    className="px-1.5 py-0.5 rounded bg-red-900/30 text-red-200 border border-red-800/40 disabled:opacity-50"
+                                  >
+                                    거절
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-slate-600">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <p className="text-[10px] text-slate-600">
+                승인 순서: 결제 확인(또는 면제) → 승인. 승인 시 participant_entitlements에 자동 반영됩니다.
+              </p>
+            </div>
+
             <p className="text-xs text-slate-500 mb-3">
               서버 이미지/웹툰 생성 기능은 비용이 발생하므로, 닉네임별로 관리자 승인(토글)로만 활성화합니다. 무료 사용자는 로컬 생성만 가능합니다.
             </p>

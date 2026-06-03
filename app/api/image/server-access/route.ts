@@ -3,7 +3,7 @@ import { verifyParticipantAuthHash } from "@/lib/participantAuth";
 import { normalizeNickname } from "@/lib/entitlements";
 import { isFeatureEnabledForNickname } from "@/lib/entitlements";
 import { getServerImageUsageSnapshot } from "@/lib/imageLimits";
-
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const rawNick = (searchParams.get("nickname") ?? "").trim().slice(0, 20);
@@ -32,6 +32,21 @@ export async function GET(request: NextRequest) {
   const comic4 = await isFeatureEnabledForNickname(nickname, "comic_4panel");
   const usage = await getServerImageUsageSnapshot({ nickname });
 
+  let pendingRequests: unknown[] = [];
+  const admin = getSupabaseAdmin();
+  if (admin) {
+    try {
+      const { data } = await admin
+        .from("image_entitlement_requests")
+        .select("id, feature_key, status, payment_status, requested_at")
+        .eq("nickname", nickname)
+        .eq("status", "pending")
+        .order("requested_at", { ascending: false });
+      pendingRequests = data ?? [];
+    } catch {
+      pendingRequests = [];
+    }
+  }
   return NextResponse.json({
     ok: true,
     nickname,
@@ -43,6 +58,7 @@ export async function GET(request: NextRequest) {
       image_cut: imageCut.ok ? null : imageCut.reason,
       comic_4panel: comic4.ok ? null : comic4.reason,
     },
+    pendingRequests,
     usage: usage.ok ? usage : null,
     usageError: usage.ok ? null : usage.message,
   });

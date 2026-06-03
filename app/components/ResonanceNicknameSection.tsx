@@ -69,13 +69,19 @@ export default function ResonanceNicknameSection({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nickname: nick, password: p }),
       });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        archivedSharedRecords?: number;
+        archiveWarning?: string;
+      };
       if (!res.ok || !json.ok) {
         setError(json.error ?? "실험 종료에 실패했습니다.");
         return;
       }
       setShowEndConfirm(false);
       setEndPassword("");
+      onSharedNicknameSet(null);
       onExperimentEnded?.();
     } finally {
       setEnding(false);
@@ -97,8 +103,11 @@ export default function ResonanceNicknameSection({
           {open ? "닫기" : "보기"}
         </button>
       </div>
-      <p className="text-xs text-slate-500">
-        친구·연인과 닉네임과 비밀번호를 공유해 같은 닉네임으로 감응 시도 실험을 함께 할 수 있습니다. 공동 닉네임으로 기록하면 해당 닉네임에 저장됩니다.
+      <p className="text-xs text-slate-500 leading-relaxed">
+        친구·연인과 닉네임·비밀번호를 공유해 같은 닉네임으로 실험할 수 있습니다.
+        <span className="block mt-1 text-slate-400">
+          공동 기록은 <strong className="text-slate-300">공동 닉네임</strong>에, 개인 기록은 <strong className="text-slate-300">개인 닉네임</strong>에 각각 저장됩니다.
+        </span>
       </p>
 
       {!open ? (
@@ -158,9 +167,13 @@ export default function ResonanceNicknameSection({
 
           {sharedNickname && (
             <div className="pt-2 border-t border-slate-700/50">
-              <p className="text-xs text-slate-500 mb-2 flex items-center gap-1">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                저장된 기록에 비방·혐오 등 참여자 중 한 명이라도 동의할 수 없는 내용이 있으면, 실험을 종료할 수 있습니다. 종료 시 감응실험실이 사라집니다. (한시적 실험 운영)
+              <p className="text-xs text-slate-500 mb-2 flex items-start gap-1 leading-relaxed">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>
+                  참여자 중 한 명이 실험을 종료하면 감응실험실 UI가 닫힙니다.
+                  이때 <strong className="text-slate-300">공동 닉네임({sharedNickname})</strong>으로 저장된 기록만 보관 해제(비공개 처리)되며,
+                  각자의 <strong className="text-slate-300">개인 닉네임</strong> 기록은 그대로 남습니다.
+                </span>
               </p>
               {!showEndConfirm ? (
                 <button
