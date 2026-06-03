@@ -25,3 +25,4 @@ npm-debug.log*
 
 # types
 next-env.d.ts
+*.tsbuildinfo
