@@ -1,11 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import {
+  fetchNicknameAwakeningFeed,
+  fetchPublicAwakeningFeed,
+  notesFromFeedItems,
+} from "@/lib/awakeningFeedClient";
 import { withTimeout } from "@/lib/requestTimeout";
 import { X } from "lucide-react";
 
 const NICKNAME_STORAGE_KEY = "lastRecordNickname";
+const POLL_MS = 8_000;
 
 const WORD_COLORS = [
   "#2563EB",
@@ -136,9 +141,16 @@ function WordCloudPanel({
 
 type Props = {
   lastRecordNickname?: string;
+  participantAuthHash?: string;
+  /** 상위에서 기록 저장 시 증가 — 즉시 재조회 */
+  refreshTick?: number;
 };
 
-export default function WordCloudViz({ lastRecordNickname = "" }: Props) {
+export default function WordCloudViz({
+  lastRecordNickname = "",
+  participantAuthHash = "",
+  refreshTick = 0,
+}: Props) {
   const [allNotes, setAllNotes] = useState<string[]>([]);
   const [myNotes, setMyNotes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,101 +173,70 @@ export default function WordCloudViz({ lastRecordNickname = "" }: Props) {
     }
   }, [lastRecordNickname]);
 
-  const fetchAll = useCallback(async () => {
-    const client = supabase;
-    if (!client) return;
+  const reloadNotes = useCallback(async () => {
     try {
-      const res = await withTimeout(
-        Promise.resolve(client.from("awakenings").select("note").limit(80))
-      ) as { data: { note: string }[] | null };
-      setAllNotes((res.data ?? []).map((r) => r.note));
+      const [publicItems, myItems] = await Promise.all([
+        withTimeout(fetchPublicAwakeningFeed(100), 12000),
+        effectiveNickname
+          ? withTimeout(
+              fetchNicknameAwakeningFeed(effectiveNickname, participantAuthHash),
+              12000
+            )
+          : Promise.resolve([]),
+      ]);
+      setAllNotes(notesFromFeedItems(publicItems));
+      setMyNotes(notesFromFeedItems(myItems));
     } catch {
       setAllNotes([]);
-    }
-  }, []);
-
-  const fetchMy = useCallback(async () => {
-    const client = supabase;
-    if (!client || !effectiveNickname) {
-      setMyNotes([]);
-      return;
-    }
-    try {
-      const res = await withTimeout(
-        Promise.resolve(client.from("awakenings").select("note").eq("nickname", effectiveNickname))
-      ) as { data: { note: string }[] | null };
-      setMyNotes((res.data ?? []).map((r) => r.note));
-    } catch {
       setMyNotes([]);
     }
-  }, [effectiveNickname]);
+  }, [effectiveNickname, participantAuthHash]);
 
   useEffect(() => {
-    const client = supabase;
-    if (!client) {
-      setLoading(false);
-      return;
-    }
+    let cancelled = false;
     const load = async () => {
-      await fetchAll();
-      await fetchMy();
-      setLoading(false);
+      setLoading(true);
+      await reloadNotes();
+      if (!cancelled) setLoading(false);
     };
-    load();
-  }, [effectiveNickname, fetchAll, fetchMy]);
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadNotes, refreshTick]);
 
   useEffect(() => {
-    const client = supabase;
-    if (!client) return;
-    const channel = client
-      .channel("wordcloud")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "awakenings" },
-        (payload) => {
-          const n = (payload.new as { note?: string; nickname?: string })?.note;
-          const nick = (payload.new as { nickname?: string })?.nickname;
-          if (n) {
-            setAllNotes((prev) => [n, ...prev].slice(0, 80));
-            if (nick && nick.trim() === effectiveNickname) {
-              setMyNotes((prev) => [n, ...prev]);
-            }
-          }
-        }
-      )
-      .subscribe();
-    return () => {
-      client.removeChannel(channel);
-    };
-  }, [effectiveNickname]);
+    const t = setInterval(() => void reloadNotes(), POLL_MS);
+    return () => clearInterval(t);
+  }, [reloadNotes]);
 
-  const fetchRecordsByKeyword = useCallback(async (keyword: string) => {
-    setKeywordModal({ keyword, records: [], loading: true });
-    const client = supabase;
-    if (!client || !keyword.trim()) {
-      setKeywordModal((m) => (m ? { ...m, loading: false } : null));
-      return;
-    }
-    try {
-      const res = await withTimeout(
-        Promise.resolve(
-          client
-            .from("awakenings")
-            .select("note, created_at")
-            .ilike("note", `%${keyword.trim()}%`)
-            .limit(30)
-        )
-      ) as { data: RecordRow[] | null };
-      const rows = res.data ?? [];
-      const shuffled = [...rows].sort(() => Math.random() - 0.5);
-      const picked = shuffled.slice(0, 5);
-      setKeywordModal({ keyword, records: picked, loading: false });
-    } catch {
-      setKeywordModal((m) => (m ? { ...m, records: [], loading: false } : null));
-    }
-  }, []);
-
-  if (!supabase) return null;
+  const fetchRecordsByKeyword = useCallback(
+    async (keyword: string) => {
+      setKeywordModal({ keyword, records: [], loading: true });
+      if (!keyword.trim()) {
+        setKeywordModal((m) => (m ? { ...m, loading: false } : null));
+        return;
+      }
+      try {
+        const [publicItems, myItems] = await Promise.all([
+          fetchPublicAwakeningFeed(100),
+          effectiveNickname
+            ? fetchNicknameAwakeningFeed(effectiveNickname, participantAuthHash)
+            : Promise.resolve([]),
+        ]);
+        const merged = [...publicItems, ...myItems];
+        const kw = keyword.trim().toLowerCase();
+        const rows = merged
+          .filter((r) => r.note.toLowerCase().includes(kw))
+          .map((r) => ({ note: r.note, created_at: r.created_at }));
+        const shuffled = [...rows].sort(() => Math.random() - 0.5);
+        setKeywordModal({ keyword, records: shuffled.slice(0, 5), loading: false });
+      } catch {
+        setKeywordModal((m) => (m ? { ...m, records: [], loading: false } : null));
+      }
+    },
+    [effectiveNickname, participantAuthHash]
+  );
   if (loading) {
     return (
       <div className="py-4 text-center text-slate-500 text-sm">워드클라우드 로딩 중...</div>

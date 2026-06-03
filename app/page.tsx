@@ -108,6 +108,8 @@ export default function Home() {
     typeof window !== "undefined" ? readStoredSharedNickname() : null
   );
   const [participantAuthHash, setParticipantAuthHash] = useState("");
+  /** 기록 저장 후 타임라인·워드클라우드·주간보고서 등 DB 연동 갱신용 */
+  const [dataRefreshTick, setDataRefreshTick] = useState(0);
 
   const setSharedNickname = useCallback((nick: string | null) => {
     const trimmed = nick?.trim().slice(0, 20) || null;
@@ -151,14 +153,13 @@ export default function Home() {
     let t: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
       try {
+        const nick = lastRecordNickname.trim();
+        const statsParams = new URLSearchParams();
+        if (nick) statsParams.set("nickname", nick);
+        if (participantAuthHash.trim()) statsParams.set("authHash", participantAuthHash.trim());
+        const statsQs = statsParams.toString();
         const res = await withTimeout(
-          fetch(
-            `/api/stats/awakenings${
-              lastRecordNickname.trim()
-                ? `?nickname=${encodeURIComponent(lastRecordNickname.trim())}`
-                : ""
-            }`
-          ),
+          fetch(`/api/stats/awakenings${statsQs ? `?${statsQs}` : ""}`),
           12000
         );
         const json = (await res.json().catch(() => ({}))) as {
@@ -178,67 +179,34 @@ export default function Home() {
       cancelled = true;
       if (t) clearTimeout(t);
     };
-  }, [lastRecordNickname]);
+  }, [lastRecordNickname, participantAuthHash, dataRefreshTick]);
   useEffect(() => {
-    const client = supabase;
-    if (!client) return;
-    let channel: ReturnType<typeof client.channel> | null = null;
-    const t = setTimeout(() => {
-      channel = client
-        .channel("page-total")
-        .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "awakenings" },
-          (payload) => {
-            const nick = (payload.new as { nickname?: string })?.nickname;
-            setTotalRecords((prev) => (typeof prev === "number" ? prev + 1 : 1));
-            if (nick?.trim() === lastRecordNickname.trim()) {
-              setMyRecordCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
-            }
-          }
-        )
-        .subscribe();
-    }, 100);
-    return () => {
-      clearTimeout(t);
-      if (channel) client.removeChannel(channel);
-    };
-  }, [lastRecordNickname]);
-  useEffect(() => {
-    const client = supabase;
-    if (!client || !lastRecordNickname.trim()) {
+    if (!lastRecordNickname.trim()) {
       setMyRecordCount(0);
       setPlanInfo({ planType: "free", usedToday: 0 });
       return;
     }
     let cancelled = false;
     const nick = lastRecordNickname.trim();
+    const client = supabase;
     const fetchCount = (n: string, since: string) =>
       client
-        .from("awakenings")
-        .select("*", { count: "exact", head: true })
-        .eq("nickname", n)
-        .gte("created_at", since)
-        .then((r) => r.count ?? 0);
+        ? client
+            .from("awakenings")
+            .select("*", { count: "exact", head: true })
+            .eq("nickname", n)
+            .gte("created_at", since)
+            .then((r) => r.count ?? 0)
+        : Promise.resolve(0);
     const fetchPlan = (n: string) =>
       client
-        .from("participant_plans")
-        .select("plan_type, valid_until")
-        .eq("nickname", n)
-        .maybeSingle()
-        .then((r) => r.data as { plan_type: string; valid_until: string } | null);
-
-    withTimeout(
-      Promise.resolve(
-        client.from("awakenings").select("*", { count: "exact", head: true }).eq("nickname", nick)
-      ),
-      10000
-    )
-      .then((res: { count?: number | null; error?: unknown }) => {
-        // RLS 변경 이후 클라이언트 count는 실패할 수 있어, 서버 stats를 우선으로 둡니다.
-        if (!cancelled && !res.error && typeof res.count === "number") setMyRecordCount(res.count);
-      })
-      .catch(() => {});
+        ? client
+            .from("participant_plans")
+            .select("plan_type, valid_until")
+            .eq("nickname", n)
+            .maybeSingle()
+            .then((r) => r.data as { plan_type: string; valid_until: string } | null)
+        : Promise.resolve(null);
 
     checkRecordLimit(nick, fetchCount, fetchPlan).then((r) => {
       if (!cancelled)
@@ -345,18 +313,14 @@ export default function Home() {
     setSubmitStatus("done");
     setRecordModalOpen(false);
     setSubmitStatus("idle");
+    setDataRefreshTick((t) => t + 1);
     if (!isSharedRecord) {
-      setMyRecordCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
-      setPlanInfo((prev) => ({
-        ...prev,
-        usedToday: prev.usedToday + 1,
-        usedPeriod: prev.usedPeriod != null ? prev.usedPeriod + 1 : undefined,
-      }));
       try {
         localStorage.setItem(NICKNAME_KEY, n);
         setLastRecordNickname(n);
       } catch {}
-    } else {
+    }
+    if (opts?.isPublic) {
       setTotalRecords((prev) => (typeof prev === "number" ? prev + 1 : 1));
     }
   };
@@ -546,7 +510,11 @@ export default function Home() {
       <section className="px-4 mt-6">
         <SectionErrorBoundary fallbackTitle="주별 보고서를 불러올 수 없습니다." onRetry={() => setSectionKeys((prev) => ({ ...prev, report: prev.report + 1 }))}>
           <div key={sectionKeys.report}>
-            <WeeklyReportSection defaultNickname={lastRecordNickname} participantAuthHash={participantAuthHash} />
+            <WeeklyReportSection
+              defaultNickname={lastRecordNickname}
+              participantAuthHash={participantAuthHash}
+              refreshTick={dataRefreshTick}
+            />
           </div>
         </SectionErrorBoundary>
       </section>
@@ -560,12 +528,20 @@ export default function Home() {
         </p>
         <SectionErrorBoundary fallbackTitle="워드클라우드를 불러오는 중 문제가 생겼습니다." onRetry={() => setSectionKeys((prev) => ({ ...prev, wordcloud: prev.wordcloud + 1 }))}>
           <div key={sectionKeys.wordcloud}>
-            <WordCloudViz lastRecordNickname={lastRecordNickname} />
+            <WordCloudViz
+              lastRecordNickname={lastRecordNickname}
+              participantAuthHash={participantAuthHash}
+              refreshTick={dataRefreshTick}
+            />
           </div>
         </SectionErrorBoundary>
         <SectionErrorBoundary fallbackTitle="타임라인을 불러오는 중 문제가 생겼습니다." onRetry={() => setSectionKeys((prev) => ({ ...prev, timeline: prev.timeline + 1 }))}>
           <div key={sectionKeys.timeline}>
-            <ExperimentTimeline lastRecordNickname={lastRecordNickname} />
+            <ExperimentTimeline
+              lastRecordNickname={lastRecordNickname}
+              participantAuthHash={participantAuthHash}
+              refreshTick={dataRefreshTick}
+            />
           </div>
         </SectionErrorBoundary>
       </section>

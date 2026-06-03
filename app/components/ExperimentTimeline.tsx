@@ -14,7 +14,11 @@ type Row = Omit<Database["public"]["Tables"]["awakenings"]["Row"], "nickname"> &
 };
 type ReactionRow = Database["public"]["Tables"]["reactions"]["Row"];
 
-type Props = { lastRecordNickname?: string };
+type Props = {
+  lastRecordNickname?: string;
+  participantAuthHash?: string;
+  refreshTick?: number;
+};
 
 type ReactionCounts = Record<string, { gam: number; eung: number }>;
 
@@ -39,7 +43,13 @@ function pickRandomRotateView(current: TimelineViewMode, pool: TimelineViewMode[
   return candidates[Math.floor(Math.random() * candidates.length)]!;
 }
 
-export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
+const FEED_POLL_MS = 8_000;
+
+export default function ExperimentTimeline({
+  lastRecordNickname = "",
+  participantAuthHash = "",
+  refreshTick = 0,
+}: Props) {
   const hasNickname = !!lastRecordNickname.trim();
 
   const [list, setList] = useState<Row[]>([]);
@@ -55,7 +65,7 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     setLoadErrorState(false);
     setLoading(true);
     try {
-      const res = await withTimeout(fetch("/api/feed/awakenings"), 12000);
+      const res = await withTimeout(fetch("/api/feed/awakenings", { cache: "no-store" }), 12000);
       const json = (await res.json().catch(() => ({}))) as { items?: Row[] };
       setList(Array.isArray(json.items) ? (json.items as Row[]) : []);
     } catch {
@@ -161,12 +171,12 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
   }, []);
 
   useEffect(() => {
-    fetchList();
-  }, []);
+    void fetchList();
+  }, [refreshTick]);
 
-  // 클라이언트 RLS/Realtime 제약과 무관하게 “기존처럼” 흐르게 하기 위해 주기적으로 갱신
+  // 클라이언트 RLS/Realtime 제약과 무관하게 서버 피드로 주기 갱신
   useEffect(() => {
-    const t = setInterval(fetchList, 6000);
+    const t = setInterval(() => void fetchList(), FEED_POLL_MS);
     return () => clearInterval(t);
   }, []);
 
@@ -244,55 +254,35 @@ export default function ExperimentTimeline({ lastRecordNickname = "" }: Props) {
     }
   };
 
-  useEffect(() => {
-    if (!lastRecordNickname.trim()) {
+  const fetchMyList = useCallback(async () => {
+    const nick = lastRecordNickname.trim();
+    if (!nick) {
       setMyList([]);
       return;
     }
-    const fetchMyList = async () => {
-      try {
-        // (간이) 내 목록은 우선 공개만 보여주고, "자각 기록 보기"에서 비밀번호 확인 후 전체 목록을 봅니다.
-        const res = await withTimeout(
-          fetch(`/api/feed/awakenings?nickname=${encodeURIComponent(lastRecordNickname.trim())}`),
-          12000
-        );
-        const json = (await res.json().catch(() => ({}))) as { items?: Row[] };
-        setMyList(Array.isArray(json.items) ? (json.items as Row[]) : []);
-      } catch {
-        setMyList([]);
-      }
-    };
-    fetchMyList();
-  }, [lastRecordNickname]);
+    try {
+      const params = new URLSearchParams({ nickname: nick });
+      if (participantAuthHash.trim()) params.set("authHash", participantAuthHash.trim());
+      const res = await withTimeout(
+        fetch(`/api/feed/awakenings?${params}`, { cache: "no-store" }),
+        12000
+      );
+      const json = (await res.json().catch(() => ({}))) as { items?: Row[] };
+      setMyList(Array.isArray(json.items) ? (json.items as Row[]) : []);
+    } catch {
+      setMyList([]);
+    }
+  }, [lastRecordNickname, participantAuthHash]);
 
   useEffect(() => {
-    const client = supabase;
-    if (!client || !lastRecordNickname.trim()) return;
-    const channel = client
-      .channel("my-list")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "awakenings" },
-        (payload) => {
-          const raw = payload.new as Record<string, unknown>;
-          if ((raw.nickname as string)?.trim() !== lastRecordNickname.trim()) return;
-          const item = {
-            id: raw.id,
-            created_at: raw.created_at,
-            nickname: raw.nickname,
-            note: raw.note,
-            duration_type: raw.duration_type ?? "1s",
-            resonance_kind: (raw.resonance_kind as string | null) ?? null,
-            resonance_kind_ai: (raw.resonance_kind_ai as string | null) ?? null,
-          } as Row;
-          setMyList((prev) => [item, ...prev].slice(0, 100));
-        }
-      )
-      .subscribe();
-    return () => {
-      client.removeChannel(channel);
-    };
-  }, [lastRecordNickname]);
+    void fetchMyList();
+  }, [fetchMyList, refreshTick]);
+
+  useEffect(() => {
+    if (!lastRecordNickname.trim()) return;
+    const t = setInterval(() => void fetchMyList(), FEED_POLL_MS);
+    return () => clearInterval(t);
+  }, [lastRecordNickname, fetchMyList]);
 
   if (!supabase) {
     return (

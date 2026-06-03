@@ -20,11 +20,14 @@ type ReportData = {
 type Props = {
   defaultNickname?: string;
   participantAuthHash?: string;
+  /** 기록 저장 시 상위에서 증가 — 열린 주간 보고서 자동 갱신 */
+  refreshTick?: number;
 };
 
 export default function WeeklyReportSection({
   defaultNickname = "",
   participantAuthHash = "",
+  refreshTick = 0,
 }: Props) {
   const [nickname, setNickname] = useState(defaultNickname);
 
@@ -107,27 +110,42 @@ export default function WeeklyReportSection({
     await doLoadReport(authHash);
   };
 
-  const doLoadReport = async (authHash: string) => {
-    setError(null);
-    setLoading(true);
-    setData(null);
+  const doLoadReport = async (authHash: string, silent = false) => {
+    if (!silent) {
+      setError(null);
+      setLoading(true);
+      setData(null);
+    }
     try {
       const res = await fetch(
-        `/api/report/weekly?nickname=${encodeURIComponent(nickname.trim())}&week=${encodeURIComponent(week)}&authHash=${encodeURIComponent(authHash)}`
+        `/api/report/weekly?nickname=${encodeURIComponent(nickname.trim())}&week=${encodeURIComponent(week)}&authHash=${encodeURIComponent(authHash)}`,
+        { cache: "no-store" }
       );
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(json.error ?? "보고서를 불러올 수 없습니다.");
+        if (!silent) setError(json.error ?? "보고서를 불러올 수 없습니다.");
         return;
       }
       setData({
         ...json,
         sentimentSummary: sanitizeAiUserText(String(json.sentimentSummary ?? "")),
       });
+      if (silent) setError(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
+
+  /** 인증된 상태에서 현재 주 보고서 자동 로드·주기 갱신 */
+  useEffect(() => {
+    const auth = resolveAuthHash();
+    const nick = (nickname || defaultNickname).trim();
+    if (!auth || !nick) return;
+    void doLoadReport(auth, !!data);
+    const t = setInterval(() => void doLoadReport(auth, true), 45_000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- data 유무로 최초 silent만 구분
+  }, [nickname, defaultNickname, participantAuthHash, week, refreshTick]);
 
   const downloadPdf = async () => {
     if (!data?.canDownload || !nickname.trim()) return;
