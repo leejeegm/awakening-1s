@@ -52,11 +52,14 @@ import {
   readStoredSharedNickname,
   writeStoredSharedNickname,
 } from "@/lib/resonanceSharedNickname";
+import {
+  clearParticipantAuthHash,
+  getParticipantAuthHash,
+  setParticipantAuthHash as persistParticipantAuthHash,
+} from "@/lib/participantAuthStorage";
 
 const STORAGE_KEY = "awakening_attempts";
 const NICKNAME_KEY = "lastRecordNickname";
-/** sessionStorage: 닉네임별 비밀번호 해시(서버 이미지·히스토리 인증), 탭 단위 */
-const PARTICIPANT_AUTH_HASH_PREFIX = "participant_auth_hash_v1";
 
 function getStoredAttempts(): number {
   if (typeof window === "undefined") return 0;
@@ -124,17 +127,18 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
     const nick = lastRecordNickname.trim();
     if (!nick) {
       setParticipantAuthHash("");
       return;
     }
-    try {
-      setParticipantAuthHash(sessionStorage.getItem(`${PARTICIPANT_AUTH_HASH_PREFIX}:${nick}`) ?? "");
-    } catch {
-      setParticipantAuthHash("");
-    }
+    setParticipantAuthHash(getParticipantAuthHash(nick));
+  }, [lastRecordNickname]);
+
+  const handleParticipantLogout = useCallback(() => {
+    const nick = lastRecordNickname.trim();
+    if (nick) clearParticipantAuthHash(nick);
+    setParticipantAuthHash("");
   }, [lastRecordNickname]);
 
   useEffect(() => {
@@ -385,9 +389,14 @@ export default function Home() {
               setParticipantAuthHash(hash);
               try {
                 localStorage.setItem(NICKNAME_KEY, nick);
-                sessionStorage.setItem(`${PARTICIPANT_AUTH_HASH_PREFIX}:${nick}`, hash);
+                persistParticipantAuthHash(nick, hash);
               } catch {}
             }}
+            isAuthenticated={
+              !!participantAuthHash.trim() && !!lastRecordNickname.trim()
+            }
+            authenticatedNickname={lastRecordNickname}
+            onLogout={handleParticipantLogout}
           />
         </div>
 
@@ -423,9 +432,10 @@ export default function Home() {
             participantAuthHash={participantAuthHash}
             onParticipantAuthHashVerified={(hash) => {
               setParticipantAuthHash(hash);
-              if (!lastRecordNickname.trim()) return;
+              const nick = lastRecordNickname.trim();
+              if (!nick) return;
               try {
-                sessionStorage.setItem(`${PARTICIPANT_AUTH_HASH_PREFIX}:${lastRecordNickname.trim()}`, hash);
+                persistParticipantAuthHash(nick, hash);
               } catch {}
             }}
           />

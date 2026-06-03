@@ -5,6 +5,7 @@ import { FileText, Download } from "lucide-react";
 import { getThisWeekSundayKST } from "@/lib/weekRange";
 import SpeechControls from "@/app/components/SpeechControls";
 import { sanitizeAiUserText } from "@/lib/aiUserText";
+import { getParticipantAuthHash } from "@/lib/participantAuthStorage";
 
 type ReportData = {
   week: string;
@@ -61,7 +62,7 @@ export default function WeeklyReportSection({
       return participantAuthHash.trim();
     }
     if (typeof window !== "undefined") {
-      const stored = sessionStorage.getItem(`participant_auth_hash_v1:${nick}`);
+      const stored = getParticipantAuthHash(nick);
       if (stored) return stored;
     }
     return otherAuthHashes[nick.toLowerCase()] ?? null;

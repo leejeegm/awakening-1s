@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const AUTH_HASH_STORAGE_PREFIX = "participant_auth_hash_v1";
+import { getParticipantAuthHash } from "@/lib/participantAuthStorage";
 
 type EligibilityResponse = {
   qualifies: boolean;
@@ -293,8 +293,8 @@ export default function PremiumReportCTA({
   useEffect(() => {
     if (!open || !trimmedNickname || isAuthenticated) return;
     try {
-      const stored = sessionStorage.getItem(`${AUTH_HASH_STORAGE_PREFIX}:${trimmedNickname}`);
-      if (stored?.trim()) onParticipantAuthHashVerified?.(stored.trim());
+      const stored = getParticipantAuthHash(trimmedNickname);
+      if (stored) onParticipantAuthHashVerified?.(stored);
     } catch {
       /* ignore */
     }

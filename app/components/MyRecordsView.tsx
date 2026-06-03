@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Database } from "@/types/supabase";
-import { Lock, X } from "lucide-react";
+import { Lock, LogOut, X } from "lucide-react";
 import ResonanceKindBadge from "./ResonanceKindBadge";
 
 type AwakeningRow = Database["public"]["Tables"]["awakenings"]["Row"];
@@ -12,9 +12,19 @@ type Props = {
   onNicknameVerified?: (nickname: string, authHash: string) => void;
   /** 현재 로그인(기록 저장) 중인 닉네임이 있으면 모달 입력 기본값으로 노출 */
   defaultNickname?: string;
+  /** 이 탭에서 조회 인증이 유효한지 */
+  isAuthenticated?: boolean;
+  authenticatedNickname?: string;
+  onLogout?: () => void;
 };
 
-export default function MyRecordsView({ onNicknameVerified, defaultNickname = "" }: Props) {
+export default function MyRecordsView({
+  onNicknameVerified,
+  defaultNickname = "",
+  isAuthenticated = false,
+  authenticatedNickname = "",
+  onLogout,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [nickname, setNickname] = useState("");
   const [password, setPassword] = useState("");
@@ -97,16 +107,35 @@ export default function MyRecordsView({ onNicknameVerified, defaultNickname = ""
     setHint("");
   };
 
+  const authNick = authenticatedNickname.trim();
+
   return (
     <>
-      <button
-        type="button"
-        onClick={handleOpen}
-        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-deep-violet/60 hover:bg-deep-violet text-white font-semibold text-[12px] transition"
-      >
-        <Lock className="w-4 h-4" />
-        자각 기록 보기(닉네임 비번 설정)
-      </button>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {isAuthenticated && authNick && (
+          <>
+            <span className="text-[11px] text-emerald-400/90" title="이 브라우저 탭에서 조회 인증됨">
+              {authNick} · 인증됨
+            </span>
+            <button
+              type="button"
+              onClick={() => onLogout?.()}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-800 text-[11px] font-medium transition"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              로그아웃
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={handleOpen}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-deep-violet/60 hover:bg-deep-violet text-white font-semibold text-[12px] transition"
+        >
+          <Lock className="w-4 h-4" />
+          자각 기록 보기(닉네임 비번 설정)
+        </button>
+      </div>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
           <div className="bg-slate-900 border border-slate-700 rounded-xl w-[min(96vw,40rem)] min-w-[17rem] min-h-[14rem] max-w-[98vw] max-h-[95vh] overflow-hidden flex flex-col resize both">
