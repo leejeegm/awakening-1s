@@ -6,6 +6,8 @@ import {
   RESONANCE_ESSENCES,
   RESONANCE_KIND_NONE,
   RESONANCE_NONE_ESSENCE,
+  RESONANCE_SUGGEST_DEBOUNCE_MS,
+  RESONANCE_SUGGEST_MIN_CHARS,
   type ResonanceKindId,
   type ResonanceKindStored,
   isResonanceKindId,
@@ -119,7 +121,7 @@ export default function RecordModal({
       return;
     }
     const text = note.trim();
-    if (text.length < 4) {
+    if (text.length < RESONANCE_SUGGEST_MIN_CHARS) {
       setAiPreview(null);
       setAiPreviewLoading(false);
       return;
@@ -164,7 +166,7 @@ export default function RecordModal({
       } finally {
         if (seq === suggestSeq.current) setAiPreviewLoading(false);
       }
-    }, 700);
+    }, RESONANCE_SUGGEST_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [open, note, duration]);
 
@@ -371,7 +373,8 @@ export default function RecordModal({
             <p className="text-xs text-slate-500">{note.length} / {limit.maxLength}</p>
             {(aiPreviewLoading ||
               aiPreview ||
-              (note.trim().length >= 4 && resonanceKind === RESONANCE_KIND_NONE)) && (
+              (note.trim().length >= RESONANCE_SUGGEST_MIN_CHARS &&
+                resonanceKind === RESONANCE_KIND_NONE)) && (
               <div className="rounded-lg border border-deep-violet/50 bg-deep-violet/20 px-3 py-2.5 text-[13px] leading-snug">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="text-slate-300 font-medium shrink-0">
@@ -399,13 +402,13 @@ export default function RecordModal({
                           : "(탭하여 선택)"}
                       </span>
                     </button>
-                  ) : note.trim().length >= 4 ? (
+                  ) : note.trim().length >= RESONANCE_SUGGEST_MIN_CHARS ? (
                     <span className="text-slate-400">
                       분류 어려움 · 미선택으로도 저장됩니다
                     </span>
                   ) : (
                     <span className="text-slate-400">
-                      입력 후 추천·자동 선택
+                      {RESONANCE_SUGGEST_MIN_CHARS}자 이상 입력 후 추천·자동 선택
                     </span>
                   )}
                 </div>

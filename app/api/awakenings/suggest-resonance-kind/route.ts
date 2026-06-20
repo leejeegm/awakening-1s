@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { inferResonanceKindFromNote } from "@/lib/inferResonanceKind";
-import { isResonanceKindId, resonanceKindShortLabel } from "@/lib/resonanceEssence";
+import { isResonanceKindId, resonanceKindShortLabel, RESONANCE_SUGGEST_MIN_CHARS } from "@/lib/resonanceEssence";
 import { getClientIp } from "@/lib/requestIp";
 
 type Body = {
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   const durationType =
     body.durationType && ["1s", "10s", "100s"].includes(body.durationType) ? body.durationType : "1s";
 
-  if (note.length < 4) {
+  if (note.length < RESONANCE_SUGGEST_MIN_CHARS) {
     return NextResponse.json({ ok: true, suggested: null, label: null });
   }
 
