@@ -126,9 +126,10 @@ export default function RecordModal({
       setAiPreviewLoading(false);
       return;
     }
+    setAiPreview(null);
+    setAiPreviewLoading(true);
     const seq = ++suggestSeq.current;
     const timer = setTimeout(async () => {
-      setAiPreviewLoading(true);
       try {
         const res = await fetch("/api/awakenings/suggest-resonance-kind", {
           method: "POST",
@@ -381,7 +382,7 @@ export default function RecordModal({
                     저장 시 AI 추천 예상
                   </span>
                   {aiPreviewLoading ? (
-                    <span className="text-slate-400">분석 중…</span>
+                    <span className="text-slate-400">분석 중… (입력 후 약 1초)</span>
                   ) : aiPreview ? (
                     <button
                       type="button"
