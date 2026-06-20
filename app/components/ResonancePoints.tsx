@@ -48,7 +48,8 @@ export default function ResonancePoints({ myRecordCount, totalRecords }: Props) 
       </div>
 
       <div className="pt-2 border-t border-slate-700 space-y-1.5 text-xs text-slate-400">
-        <p>· 자신의 누적 포인트는 자신의 기록 보상입니다.</p>
+        <p>· 자신의 누적 포인트는 자신의 기록(나만보기·공개) 건수 보상입니다.</p>
+        <p>· 참여자 전체 누적은 모든 참여 기록 건수 합(내용은 비공개)입니다. 공개 워드클라우드·타임라인과는 별도 집계입니다.</p>
         <p>· 포인트를 후원하면, 50%는 시스템 운영에, 50%는 참여자 초청 행사에 사용 예정입니다.</p>
       </div>
     </div>

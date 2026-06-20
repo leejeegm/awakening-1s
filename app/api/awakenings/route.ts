@@ -198,6 +198,24 @@ export async function POST(request: NextRequest) {
       ? "일시적 점검으로 공유저장이 제한되어 보관 처리되었습니다."
       : null;
 
+  let totalRecords: number | null = null;
+  let myRecordCount: number | null = null;
+  if (moderation_state === "ok") {
+    const [{ count: totalCount }, { count: nickCount }] = await Promise.all([
+      admin
+        .from("awakenings")
+        .select("*", { count: "exact", head: true })
+        .eq("moderation_state", "ok"),
+      admin
+        .from("awakenings")
+        .select("*", { count: "exact", head: true })
+        .eq("moderation_state", "ok")
+        .eq("nickname", nickname),
+    ]);
+    totalRecords = typeof totalCount === "number" ? totalCount : null;
+    myRecordCount = typeof nickCount === "number" ? nickCount : null;
+  }
+
   return NextResponse.json({
     ok: true,
     isPublicSaved: isPublic,
@@ -208,6 +226,8 @@ export async function POST(request: NextRequest) {
       resonanceKindAi && isResonanceKindId(resonanceKindAi)
         ? resonanceKindShortLabel(resonanceKindAi)
         : null,
+    totalRecords,
+    myRecordCount,
   });
 }
 

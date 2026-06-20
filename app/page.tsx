@@ -302,6 +302,16 @@ export default function Home() {
     }
     setSubmitStatus("loading");
     const noteSliced = t.slice(0, duration === "1s" ? 80 : duration === "10s" ? 60 : 100);
+    type SaveJson = {
+      ok?: boolean;
+      error?: string;
+      notice?: string;
+      resonanceKindAiLabel?: string | null;
+      moderationState?: string;
+      totalRecords?: number | null;
+      myRecordCount?: number | null;
+    };
+    let saveJson: SaveJson | null = null;
     try {
       const res = await fetch("/api/awakenings", {
         method: "POST",
@@ -316,17 +326,13 @@ export default function Home() {
           isPublic: !!opts?.isPublic,
         }),
       });
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-        notice?: string;
-        resonanceKindAiLabel?: string | null;
-      };
+      const json = (await res.json().catch(() => ({}))) as SaveJson;
       if (!res.ok || !json.ok) {
         setSubmitError(json.error ?? "저장에 실패했습니다. 다시 시도해 주세요.");
         setSubmitStatus("error");
         return;
       }
+      saveJson = json;
       if (json.notice) {
         setSubmitError(json.notice);
       }
@@ -349,13 +355,14 @@ export default function Home() {
         localStorage.setItem(NICKNAME_KEY, n);
         setLastRecordNickname(n);
       } catch {}
-      const countsPrivate = !!authForStats || !!opts?.isPublic;
-      if (countsPrivate) {
-        setMyRecordCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
-      }
     }
-    if (opts?.isPublic) {
-      setTotalRecords((prev) => (typeof prev === "number" ? prev + 1 : 1));
+    if (saveJson?.moderationState === "ok" || saveJson?.moderationState == null) {
+      if (typeof saveJson?.totalRecords === "number") setTotalRecords(saveJson.totalRecords);
+      else setTotalRecords((prev) => (typeof prev === "number" ? prev + 1 : 1));
+      if (!isSharedRecord) {
+        if (typeof saveJson?.myRecordCount === "number") setMyRecordCount(saveJson.myRecordCount);
+        else setMyRecordCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
+      }
     }
     setDataRefreshTick((t) => t + 1);
     void fetchAwakeningStats(n, authForStats).catch(() => {});
