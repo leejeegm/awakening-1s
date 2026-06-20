@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { withTimeout } from "@/lib/requestTimeout";
 
 const CAP = 100;
+const STATS_POLL_MS = 5_000;
 
 function tokenize(text: string): string[] {
   return text
@@ -38,30 +39,37 @@ export default function ResonansGauge({ myAttempts, lastRecordNickname = "" }: P
   const [showRandomNote, setShowRandomNote] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchCount = async () => {
+    let cancelled = false;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
       try {
-        const res = await withTimeout(fetch("/api/stats/awakenings"), 12000);
+        const res = await withTimeout(fetch("/api/stats/awakenings", { cache: "no-store" }), 12000);
         const json = (await res.json().catch(() => ({}))) as { totalRecords?: number | null };
-        if (typeof json.totalRecords === "number") setTotal(json.totalRecords);
-      } catch {}
+        if (!cancelled && typeof json.totalRecords === "number") setTotal(json.totalRecords);
+      } catch {
+        /* 다음 주기 재시도 */
+      }
+      if (!cancelled) t = setTimeout(tick, STATS_POLL_MS);
     };
-    fetchCount();
+    void tick();
+    return () => {
+      cancelled = true;
+      if (t) clearTimeout(t);
+    };
   }, []);
 
   useEffect(() => {
-    const client = supabase;
-    if (!client) return;
-    const channel = client
-      .channel("gauge")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "awakenings" },
-        () => setTotal((prev) => prev + 1)
-      )
-      .subscribe();
-    return () => {
-      client.removeChannel(channel);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void withTimeout(fetch("/api/stats/awakenings", { cache: "no-store" }), 12000)
+        .then((r) => r.json())
+        .then((json: { totalRecords?: number | null }) => {
+          if (typeof json.totalRecords === "number") setTotal(json.totalRecords);
+        })
+        .catch(() => {});
     };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
   const fetchNotes = useCallback(async () => {
