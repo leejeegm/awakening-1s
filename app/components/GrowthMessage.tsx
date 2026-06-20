@@ -119,7 +119,9 @@ export default function GrowthMessage({
   const fetchWarmMessage = useCallback(async () => {
     const nick = (lastRecordNickname || "").trim() || (typeof window !== "undefined" ? localStorage.getItem("lastRecordNickname") ?? "" : "").trim();
     if (!nick) {
-      setWarmError("닉네임이 없습니다. 먼저 자각 기록을 남겨 주세요.");
+      setWarmError(
+        "자각 기록 보기(닉네임 비번 설정) 클릭해서 닉네임과 비번을 설정하거나 확인 후 자각기록을 남긴 후 사용해 주세요."
+      );
       setWarmMessage(null);
       return;
     }
