@@ -3,11 +3,6 @@
 /** DB·API 저장값: 일곱 유형에 가두지 않고 찰나를 남기는 의도적 선택 */
 export const RESONANCE_KIND_NONE = "none" as const;
 
-/** 기록 모달 AI 감응 유형 추천: 입력 멈춤 후 API 호출 간격 */
-export const RESONANCE_SUGGEST_DEBOUNCE_MS = 1000;
-/** 추천 시작 최소 글자 수 (1s 찰나 한 줄 기준) */
-export const RESONANCE_SUGGEST_MIN_CHARS = 8;
-
 export type ResonanceKindNone = typeof RESONANCE_KIND_NONE;
 
 export type ResonanceKindId =

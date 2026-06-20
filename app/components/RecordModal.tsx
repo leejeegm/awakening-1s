@@ -6,13 +6,15 @@ import {
   RESONANCE_ESSENCES,
   RESONANCE_KIND_NONE,
   RESONANCE_NONE_ESSENCE,
-  RESONANCE_SUGGEST_DEBOUNCE_MS,
-  RESONANCE_SUGGEST_MIN_CHARS,
   type ResonanceKindId,
   type ResonanceKindStored,
   isResonanceKindId,
   resonanceKindShortLabel,
 } from "@/lib/resonanceEssence";
+import {
+  getResonanceSuggestConfig,
+  isNoteReadyForResonanceSuggest,
+} from "@/lib/resonanceSuggestConfig";
 
 export type DurationType = "1s" | "10s" | "100s";
 
@@ -101,6 +103,8 @@ export default function RecordModal({
 
   const effectiveNickname = sharedNickname && recordAs === "shared" ? sharedNickname : nickname.trim();
   const showNicknameChoice = !!sharedNickname?.trim();
+  const suggestConfig = getResonanceSuggestConfig(duration);
+  const noteReadyForSuggest = isNoteReadyForResonanceSuggest(note, duration);
 
   useEffect(() => {
     if (open) {
@@ -121,7 +125,7 @@ export default function RecordModal({
       return;
     }
     const text = note.trim();
-    if (text.length < RESONANCE_SUGGEST_MIN_CHARS) {
+    if (!noteReadyForSuggest) {
       setAiPreview(null);
       setAiPreviewLoading(false);
       return;
@@ -167,9 +171,9 @@ export default function RecordModal({
       } finally {
         if (seq === suggestSeq.current) setAiPreviewLoading(false);
       }
-    }, RESONANCE_SUGGEST_DEBOUNCE_MS);
+    }, suggestConfig.debounceMs);
     return () => clearTimeout(timer);
-  }, [open, note, duration]);
+  }, [open, note, duration, noteReadyForSuggest, suggestConfig.debounceMs]);
 
   const limit = LIMITS[duration];
 
@@ -374,15 +378,16 @@ export default function RecordModal({
             <p className="text-xs text-slate-500">{note.length} / {limit.maxLength}</p>
             {(aiPreviewLoading ||
               aiPreview ||
-              (note.trim().length >= RESONANCE_SUGGEST_MIN_CHARS &&
-                resonanceKind === RESONANCE_KIND_NONE)) && (
+              (noteReadyForSuggest && resonanceKind === RESONANCE_KIND_NONE)) && (
               <div className="rounded-lg border border-deep-violet/50 bg-deep-violet/20 px-3 py-2.5 text-[13px] leading-snug">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="text-slate-300 font-medium shrink-0">
                     저장 시 AI 추천 예상
                   </span>
                   {aiPreviewLoading ? (
-                    <span className="text-slate-400">분석 중… (입력 후 약 1초)</span>
+                    <span className="text-slate-400">
+                      분석 중… (입력 후 {suggestConfig.waitingHint})
+                    </span>
                   ) : aiPreview ? (
                     <button
                       type="button"
@@ -403,14 +408,12 @@ export default function RecordModal({
                           : "(탭하여 선택)"}
                       </span>
                     </button>
-                  ) : note.trim().length >= RESONANCE_SUGGEST_MIN_CHARS ? (
+                  ) : noteReadyForSuggest ? (
                     <span className="text-slate-400">
                       분류 어려움 · 미선택으로도 저장됩니다
                     </span>
                   ) : (
-                    <span className="text-slate-400">
-                      {RESONANCE_SUGGEST_MIN_CHARS}자 이상 입력 후 추천·자동 선택
-                    </span>
+                    <span className="text-slate-400">{suggestConfig.thresholdHint}</span>
                   )}
                 </div>
               </div>

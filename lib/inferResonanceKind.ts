@@ -4,73 +4,26 @@ import {
   RESONANCE_ESSENCES,
   type ResonanceKindId,
 } from "@/lib/resonanceEssence";
+import {
+  keywordMatchWeight,
+  RESONANCE_KIND_KEYWORDS,
+  RULE_CONFIDENT_WEIGHT,
+  RULE_FALLBACK_WEIGHT,
+} from "@/lib/resonanceKindKeywords";
 
-/** 유형별 키워드 힌트(룰베이스 1차 분류) */
-const KIND_KEYWORDS: Record<ResonanceKindId, string[]> = {
-  self: [
-    "나",
-    "내",
-    "스스로",
-    "마음",
-    "감정",
-    "불안",
-    "기쁨",
-    "슬픔",
-    "우울",
-    "자신",
-    "느꼈",
-    "힘들",
-    "외로",
-  ],
-  interpersonal: [
-    "친구",
-    "연인",
-    "가족",
-    "대화",
-    "상대",
-    "관계",
-    "엄마",
-    "아빠",
-    "형",
-    "누나",
-    "동생",
-    "썸",
-    "이별",
-    "그리움",
-  ],
-  belonging: ["팀", "회사", "학교", "동아리", "우리", "소속", "부서", "조직", "멤버", "동료"],
-  social: ["사회", "뉴스", "시대", "정치", "경제", "문화", "세상", "이슈", "직장", "역할"],
-  nature: [
-    "바다",
-    "산",
-    "하늘",
-    "바람",
-    "비",
-    "눈",
-    "계절",
-    "자연",
-    "숲",
-    "해변",
-    "날씨",
-    "햇",
-    "달",
-    "구름",
-  ],
-  life: ["강아지", "고양이", "반려", "식물", "꽃", "새", "동물", "생명", "새끼", "씨앗"],
-  other: ["음악", "노래", "예술", "그림", "꿈", "침묵", "시간", "우연", "신", "기도"],
-};
-
-function scoreByKeywords(note: string): { id: ResonanceKindId; score: number } | null {
+function scoreByKeywords(note: string): { id: ResonanceKindId; weight: number } | null {
   const text = note.toLowerCase();
-  let best: { id: ResonanceKindId; score: number } | null = null;
-  for (const id of Object.keys(KIND_KEYWORDS) as ResonanceKindId[]) {
-    let score = 0;
-    for (const kw of KIND_KEYWORDS[id]) {
-      if (text.includes(kw)) score += 1;
+  let best: { id: ResonanceKindId; weight: number } | null = null;
+  for (const id of Object.keys(RESONANCE_KIND_KEYWORDS) as ResonanceKindId[]) {
+    let weight = 0;
+    for (const kw of RESONANCE_KIND_KEYWORDS[id]) {
+      if (!text.includes(kw.toLowerCase())) continue;
+      weight += keywordMatchWeight(kw);
+      if (weight >= RULE_CONFIDENT_WEIGHT) return { id, weight };
     }
-    if (!best || score > best.score) best = { id, score };
+    if (!best || weight > best.weight) best = { id, weight };
   }
-  if (!best || best.score < 1) return null;
+  if (!best || best.weight < 1) return null;
   return best;
 }
 
@@ -126,11 +79,11 @@ export async function inferResonanceKindFromNote(
   if (!trimmed) return null;
 
   const ruled = scoreByKeywords(trimmed);
-  if (ruled && ruled.score >= 2) return ruled.id;
+  if (ruled && ruled.weight >= RULE_CONFIDENT_WEIGHT) return ruled.id;
 
   const fromAi = await inferWithGemini(trimmed, durationType, options?.rateLimitKey);
   if (fromAi) return fromAi;
 
-  if (ruled && ruled.score >= 1) return ruled.id;
+  if (ruled && ruled.weight >= RULE_FALLBACK_WEIGHT) return ruled.id;
   return null;
 }
