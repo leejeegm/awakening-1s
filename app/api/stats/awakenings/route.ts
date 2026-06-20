@@ -57,7 +57,12 @@ export async function GET(request: NextRequest) {
       totalRecords: typeof totalCount === "number" ? totalCount : null,
       myRecordCount: nickname && typeof myCount === "number" ? myCount : null,
     },
-    { status: 200 }
+    {
+      status: 200,
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    }
   );
 }
 

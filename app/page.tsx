@@ -60,6 +60,7 @@ import {
 
 const STORAGE_KEY = "awakening_attempts";
 const NICKNAME_KEY = "lastRecordNickname";
+const STATS_POLL_MS = 5_000;
 
 function getStoredAttempts(): number {
   if (typeof window === "undefined") return 0;
@@ -152,38 +153,63 @@ export default function Home() {
     setSharedNickname(null);
   }, [setSharedNickname]);
 
+  const applyStatsJson = useCallback(
+    (json: { totalRecords?: number | null; myRecordCount?: number | null }, nickForMy: string) => {
+      if (typeof json.totalRecords === "number") setTotalRecords(json.totalRecords);
+      else if (json.totalRecords === null) setTotalRecords(null);
+      if (typeof json.myRecordCount === "number") setMyRecordCount(json.myRecordCount);
+      else if (json.myRecordCount === null) setMyRecordCount(nickForMy.trim() ? null : 0);
+    },
+    []
+  );
+
+  const fetchAwakeningStats = useCallback(
+    async (nickOverride?: string, authOverride?: string) => {
+      const nick = (nickOverride ?? lastRecordNickname).trim();
+      const auth = (authOverride ?? participantAuthHash).trim();
+      const statsParams = new URLSearchParams();
+      if (nick) statsParams.set("nickname", nick);
+      if (auth) statsParams.set("authHash", auth);
+      const res = await withTimeout(
+        fetch(`/api/stats/awakenings?${statsParams}`, { cache: "no-store" }),
+        12000
+      );
+      const json = (await res.json().catch(() => ({}))) as {
+        totalRecords?: number | null;
+        myRecordCount?: number | null;
+      };
+      applyStatsJson(json, nick);
+      return json;
+    },
+    [lastRecordNickname, participantAuthHash, applyStatsJson]
+  );
+
   useEffect(() => {
     let cancelled = false;
     let t: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
       try {
-        const nick = lastRecordNickname.trim();
-        const statsParams = new URLSearchParams();
-        if (nick) statsParams.set("nickname", nick);
-        if (participantAuthHash.trim()) statsParams.set("authHash", participantAuthHash.trim());
-        const statsQs = statsParams.toString();
-        const res = await withTimeout(
-          fetch(`/api/stats/awakenings${statsQs ? `?${statsQs}` : ""}`),
-          12000
-        );
-        const json = (await res.json().catch(() => ({}))) as {
-          totalRecords?: number | null;
-          myRecordCount?: number | null;
-        };
         if (cancelled) return;
-        if (typeof json.totalRecords === "number") setTotalRecords(json.totalRecords);
-        else if (json.totalRecords === null) setTotalRecords(null);
-        if (typeof json.myRecordCount === "number") setMyRecordCount(json.myRecordCount);
-        else if (json.myRecordCount === null) setMyRecordCount(lastRecordNickname.trim() ? null : 0);
-      } catch {}
-      if (!cancelled) t = setTimeout(tick, 8000);
+        await fetchAwakeningStats();
+      } catch {
+        /* 다음 주기에 재시도 */
+      }
+      if (!cancelled) t = setTimeout(tick, STATS_POLL_MS);
     };
-    tick();
+    void tick();
     return () => {
       cancelled = true;
       if (t) clearTimeout(t);
     };
-  }, [lastRecordNickname, participantAuthHash, dataRefreshTick]);
+  }, [fetchAwakeningStats, dataRefreshTick]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void fetchAwakeningStats().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [fetchAwakeningStats]);
   useEffect(() => {
     if (!lastRecordNickname.trim()) {
       setMyRecordCount(0);
@@ -317,16 +343,22 @@ export default function Home() {
     setSubmitStatus("done");
     setRecordModalOpen(false);
     setSubmitStatus("idle");
-    setDataRefreshTick((t) => t + 1);
+    const authForStats = getParticipantAuthHash(n) || participantAuthHash.trim();
     if (!isSharedRecord) {
       try {
         localStorage.setItem(NICKNAME_KEY, n);
         setLastRecordNickname(n);
       } catch {}
+      const countsPrivate = !!authForStats || !!opts?.isPublic;
+      if (countsPrivate) {
+        setMyRecordCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
+      }
     }
     if (opts?.isPublic) {
       setTotalRecords((prev) => (typeof prev === "number" ? prev + 1 : 1));
     }
+    setDataRefreshTick((t) => t + 1);
+    void fetchAwakeningStats(n, authForStats).catch(() => {});
   };
 
   if (experimentEnded) {
